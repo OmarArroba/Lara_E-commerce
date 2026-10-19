@@ -1,0 +1,19 @@
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+import path from 'node:path'
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: { '@': path.resolve(import.meta.dirname, './src') },
+  },
+  server: {
+    port: 5173,
+    proxy: {
+      // La API Laravel corre en :8000 (Sail: puerto 80 -> 8000 en local)
+      '/api': { target: 'http://localhost:8000', changeOrigin: true },
+      '/sanctum': { target: 'http://localhost:8000', changeOrigin: true },
+    },
+  },
+})
