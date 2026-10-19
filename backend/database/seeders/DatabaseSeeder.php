@@ -12,19 +12,25 @@ class DatabaseSeeder extends Seeder
     {
         $this->call(RolesAndPermissionsSeeder::class);
 
-        // Usuarios de demostracion: NUNCA en produccion.
+        // Usuarios y catálogo de demostración: NUNCA en producción.
         if (app()->isProduction()) {
             return;
         }
 
         $demo = [
-            ['Ana Martinez', 'admin@lara.test', RoleName::SuperAdmin],
+            ['Ana Martínez', 'admin@lara.test', RoleName::SuperAdmin],
             ['Carlos Ruiz', 'inventory@lara.test', RoleName::InventoryManager],
-            ['Maria Lopez', 'sales@lara.test', RoleName::Sales],
+            ['María López', 'sales@lara.test', RoleName::Sales],
         ];
 
         foreach ($demo as [$name, $email, $role]) {
-            User::factory()->create(['name' => $name, 'email' => $email])->assignRole($role->value);
+            $user = User::firstOrCreate(
+                ['email' => $email],
+                ['name' => $name, 'password' => 'password', 'email_verified_at' => now(), 'is_active' => true]
+            );
+            $user->syncRoles([$role->value]);
         }
+
+        $this->call(CatalogAndInventorySeeder::class);
     }
 }

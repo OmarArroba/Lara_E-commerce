@@ -20,7 +20,12 @@ class StockMovement extends Model
 
     protected function casts(): array
     {
-        return ['type' => MovementType::class, 'quantity' => 'integer', 'balance_after' => 'integer'];
+        return [
+            'type' => MovementType::class,
+            'quantity' => 'integer',
+            'balance_after' => 'integer',
+            'created_at' => 'datetime',
+        ];
     }
 
     public function variant(): BelongsTo
@@ -31,6 +36,11 @@ class StockMovement extends Model
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);
+    }
+
+    public function relatedWarehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class, 'related_warehouse_id');
     }
 
     public function user(): BelongsTo
