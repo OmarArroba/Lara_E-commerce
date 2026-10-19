@@ -1,0 +1,25 @@
+# Dependencias y compilados
+node_modules/
+vendor/
+dist/
+
+# Variables de entorno y secretos
+.env
+.env.*
+!.env.example
+
+# Archivos internos / privados de trabajo local (contexto IA, prompts, exportaciones crudas de diseño)
+/docs/
+/design/
+/infra/
+/.github/
+AGENTS.md
+CLAUDE.md
+*prompt*.md
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
