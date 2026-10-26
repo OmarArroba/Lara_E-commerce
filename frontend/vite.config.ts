@@ -11,9 +11,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // La API Laravel corre en :8000 (Sail: puerto 80 -> 8000 en local)
-      '/api': { target: 'http://localhost:8000', changeOrigin: true },
-      '/sanctum': { target: 'http://localhost:8000', changeOrigin: true },
+      // La API Laravel corre en 127.0.0.1:8000 (Sail: puerto 80 -> 8000 en local)
+      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+      '/sanctum': { target: 'http://127.0.0.1:8000', changeOrigin: true },
     },
   },
 })

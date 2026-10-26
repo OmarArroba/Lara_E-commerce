@@ -71,6 +71,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return json as T
 }
 
+let meInFlight: Promise<ApiUser> | null = null
+
 export const authApi = {
   async login(email: string, password: string, remember = false): Promise<ApiUser> {
     await ensureCsrfCookie()
@@ -82,8 +84,14 @@ export const authApi = {
   },
 
   async me(): Promise<ApiUser> {
-    const res = await request<{ data: ApiUser }>('/api/v1/auth/me')
-    return res.data
+    if (!meInFlight) {
+      meInFlight = request<{ data: ApiUser }>('/api/v1/auth/me')
+        .then((res) => res.data)
+        .finally(() => {
+          meInFlight = null
+        })
+    }
+    return meInFlight
   },
 
   async logout(): Promise<void> {
