@@ -176,3 +176,91 @@ it('registra entradas, exige contrasena en ajustes/salidas, impide sobregiro y t
     expect(Stock::where('warehouse_id', $central->id)->value('quantity'))->toBe(10)
         ->and(Stock::where('warehouse_id', $norte->id)->value('quantity'))->toBe(8);
 });
+
+it('permite crear proveedores con PII cifrada y gestionar ordenes de compra con recepcion de stock', function () {
+    $admin = User::factory()->create()->assignRole(RoleName::Admin->value);
+    $manager = User::factory()->create()->assignRole(RoleName::InventoryManager->value);
+    $category = Category::create(['name' => 'Perifericos', 'slug' => 'perifericos']);
+    $brand = Brand::create(['name' => 'Logitech', 'slug' => 'logitech', 'code' => 'LOG']);
+    $warehouse = Warehouse::create(['code' => 'ALM-01', 'name' => 'Almacén Central']);
+
+    $product = $category->products()->create([
+        'brand_id' => $brand->id,
+        'name' => 'Logitech MX Keys S',
+        'slug' => 'logitech-mx-keys-s',
+        'base_sku' => 'LOG-MXKS',
+    ]);
+    /** @var ProductVariant $variant */
+    $variant = $product->variants()->create([
+        'sku' => 'LOG-MXKS-GRY',
+        'price' => 109.00,
+        'cost' => 72.00,
+    ]);
+
+    // 1. Admin crea proveedor con PII cifrada
+    $supplierRes = $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/v1/suppliers', [
+            'code' => 'PRV-0099',
+            'legal_name' => 'NextGen Electronics Corp.',
+            'trade_name' => 'NextGen Dist.',
+            'tax_id' => '99-1234567',
+            'contact_name' => 'Elena Torres',
+            'contact_email' => 'elena@nextgen.example.com',
+            'contact_phone' => '+1 305 555 0199',
+            'city' => 'Miami',
+            'state' => 'FL',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.code', 'PRV-0099')
+        ->assertJsonPath('data.contact_email', 'elena@nextgen.example.com');
+
+    $supplierId = $supplierRes->json('data.id');
+
+    // 2. Inventory manager crea una orden de compra por 10 unidades
+    $poRes = $this->actingAs($manager, 'sanctum')
+        ->postJson('/api/v1/purchase-orders', [
+            'supplier_id' => $supplierId,
+            'warehouse_id' => $warehouse->id,
+            'items' => [
+                [
+                    'product_variant_id' => $variant->id,
+                    'quantity_ordered' => 10,
+                    'unit_cost' => 72.00,
+                ],
+            ],
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.status', 'sent')
+        ->assertJsonPath('data.total', 720);
+
+    $poId = $poRes->json('data.id');
+    $itemId = $poRes->json('data.items.0.id');
+
+    // 3. Recepción parcial de 6 unidades incrementa el stock a 6 y deja la orden en partially_received
+    $this->actingAs($manager, 'sanctum')
+        ->postJson("/api/v1/purchase-orders/{$poId}/receive", [
+            'items' => [
+                ['item_id' => $itemId, 'quantity_received' => 6],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'partially_received')
+        ->assertJsonPath('data.items.0.quantity_received', 6)
+        ->assertJsonPath('data.items.0.pending', 4);
+
+    expect(Stock::where('product_variant_id', $variant->id)->where('warehouse_id', $warehouse->id)->value('quantity'))->toBe(6);
+
+    // 4. Recepción de las 4 unidades restantes completa la orden (received) y sube el stock a 10
+    $this->actingAs($manager, 'sanctum')
+        ->postJson("/api/v1/purchase-orders/{$poId}/receive", [
+            'items' => [
+                ['item_id' => $itemId, 'quantity_received' => 4],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'received')
+        ->assertJsonPath('data.items.0.quantity_received', 10)
+        ->assertJsonPath('data.items.0.pending', 0);
+
+    expect(Stock::where('product_variant_id', $variant->id)->where('warehouse_id', $warehouse->id)->value('quantity'))->toBe(10);
+});

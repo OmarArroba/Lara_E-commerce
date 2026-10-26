@@ -73,7 +73,9 @@ import {
   categoriesApi,
   dashboardApi,
   productsApi,
+  purchaseOrdersApi,
   stockMovementsApi,
+  suppliersApi,
   warehousesApi,
 } from '@/api/client'
 import type {
@@ -81,7 +83,9 @@ import type {
   ApiCategory,
   ApiDashboardData,
   ApiProduct,
+  ApiPurchaseOrder,
   ApiStockMovement,
+  ApiSupplier,
   ApiUser,
   ApiWarehouse,
   ApiWarehouseDetail,
@@ -914,11 +918,13 @@ function Warehouses({ salesMode }: { salesMode: boolean }) {
   </main>
 }
 
-const orders = [
-  { id: 'OC-2026-0184', supplier: 'TechDistribution LLC', items: 3, total: '$28,460.00', created: '18 Oct 2026', delivery: '24 Oct 2026', status: 'Recibida parcial' },
-  { id: 'OC-2026-0183', supplier: 'Apple Authorized Dist.', items: 3, total: '$42,180.00', created: '16 Oct 2026', delivery: '22 Oct 2026', status: 'Enviada' },
-  { id: 'OC-2026-0182', supplier: 'Global Devices Inc.', items: 8, total: '$16,840.00', created: '14 Oct 2026', delivery: '20 Oct 2026', status: 'Recibida' },
-]
+function mapOrderStatusLabel(status: ApiPurchaseOrder['status']): string {
+  if (status === 'received') return 'Recibida'
+  if (status === 'partially_received') return 'Recibida parcial'
+  if (status === 'sent') return 'Enviada'
+  if (status === 'cancelled') return 'Cancelada'
+  return 'Borrador'
+}
 
 function OrderStatus({ status }: { status: string }) {
   const tone: Tone = status === 'Recibida' ? 'success' : status === 'Cancelada' ? 'danger' : status === 'Borrador' ? 'neutral' : status === 'Recibida parcial' ? 'warning' : 'info'
@@ -926,30 +932,195 @@ function OrderStatus({ status }: { status: string }) {
 }
 
 function Purchases({ salesMode }: { salesMode: boolean }) {
-  const [detail, setDetail] = useState(false)
+  const [orders, setOrders] = useState<ApiPurchaseOrder[]>([])
+  const [selectedOrder, setSelectedOrder] = useState<ApiPurchaseOrder | null>(null)
   const [receive, setReceive] = useState(false)
+  const [receiveQuantities, setReceiveQuantities] = useState<Record<string, number>>({})
+  const [receiveError, setReceiveError] = useState<string | null>(null)
+  const [submittingReceive, setSubmittingReceive] = useState(false)
   const [done, setDone] = useState(false)
-  const items = [
-    ['iPhone 15 Pro 256GB', 'APL-IP15P-256-BLK', 24, 18, '$965.00', '$23,160.00'],
-    ['AirPods Pro 2ª gen.', 'APL-APP2-USB-C-WHT', 20, 20, '$182.00', '$3,640.00'],
-    ['Cargador USB-C 65W', 'ANK-CHG-65W-BLK', 40, 0, '$41.50', '$1,660.00'],
-  ]
-  if (detail) return <main className="page purchase-detail">
-    <div className="breadcrumb"><button onClick={() => setDetail(false)}>Compras</button><ChevronRight size={13} /><b>OC-2026-0184</b></div>
-    <div className="page-heading compact purchase-heading"><div><div className="detail-title-line"><h1>Orden OC-2026-0184</h1><OrderStatus status="Recibida parcial" /></div><p>Creada por Ana Martínez</p></div><div className="heading-actions"><Button variant="secondary" icon={<FileText size={15} />}>Descargar PDF</Button><Button disabled={salesMode} onClick={() => setReceive(true)} icon={<PackageCheck size={16} />}>Recibir mercancía</Button></div></div>
-    <div className="purchase-layout"><div className="purchase-main">
-      <Card className="order-progress"><div className="progress-step complete"><span><Check size={14} /></span><div><b>Borrador</b><small>Completado</small></div></div><i /><div className="progress-step complete"><span><Check size={14} /></span><div><b>Enviada</b><small>Completado</small></div></div><i /><div className="progress-step active"><span><Truck size={14} /></span><div><b>Recepción parcial</b><small>En curso</small></div></div><i /><div className="progress-step"><span><PackageCheck size={14} /></span><div><b>Recibida</b><small>Pendiente</small></div></div></Card>
-      <Card className="order-items-card"><div className="detail-section-head"><div><h2>Productos de la orden</h2><p>3 productos · 84 unidades solicitadas</p></div></div><div className="table-scroll"><table className="order-line-table"><thead><tr><th>Producto</th><th>Solicitado</th><th>Recibido</th><th>Pendiente</th><th>Costo unitario</th><th>Subtotal</th></tr></thead><tbody>{items.map((item, i) => <tr key={item[1] as string}><td><div className="product-cell"><img src={productImages[i]} alt="" /><span><b>{item[0]}</b><small>{item[1]}</small></span></div></td><td>{item[2]} uds.</td><td><b className={item[3] ? 'up' : ''}>{item[3]} uds.</b></td><td><Badge tone={Number(item[2])-Number(item[3]) > 0 ? 'warning' : 'success'}>{Number(item[2])-Number(item[3])} uds.</Badge></td><td>{item[4]}</td><td><b>{item[5]}</b></td></tr>)}</tbody></table></div><div className="order-total"><span>Subtotal <b>$28,460.00</b></span><span>Impuestos <b>$0.00</b></span><span className="grand-total">Total <b>$28,460.00</b></span></div></Card>
-    </div><aside className="purchase-side"><Card className="form-card"><div className="side-card-title"><h2>Proveedor</h2></div><div className="supplier-card"><span>TD</span><div><b>TechDistribution LLC</b><small>robert@techdistribution.com</small><small>+1 (305) 555-0184</small></div></div></Card></aside></div>
-    {receive && <Modal title="Recibir mercancía" subtitle="Registra las cantidades recibidas para OC-2026-0184." onClose={() => setReceive(false)} footer={<><Button variant="secondary" onClick={() => setReceive(false)}>Cancelar</Button><Button icon={<PackageCheck size={15} />} onClick={() => { setReceive(false); setDone(true) }}>Confirmar recepción</Button></>}>
-      <div className="receive-destination"><Warehouse size={16} /><div><small>Almacén de destino</small><b>Almacén Central · ALM-MIA-01</b></div></div>
-      <div className="receive-list">{items.filter(item => Number(item[2])-Number(item[3]) > 0).map((item, i) => <div className="receive-row" key={item[1] as string}><img src={productImages[i]} alt="" /><div><b>{item[0]}</b><small>{item[1]} · Pendiente: {Number(item[2])-Number(item[3])}</small></div><label><span>Recibido</span><input type="number" defaultValue={Number(item[2])-Number(item[3])} /></label></div>)}</div>
-    </Modal>}
-    {done && <div className="toast"><span><Check size={16} /></span><div><b>Recepción registrada</b><p>El stock del Almacén Central fue actualizado.</p></div><button onClick={() => setDone(false)}><X size={15} /></button></div>}
-  </main>
+
+  // Modal de Nueva Orden
+  const [createModal, setCreateModal] = useState(false)
+  const [suppliers, setSuppliers] = useState<ApiSupplier[]>([])
+  const [warehouses, setWarehouses] = useState<ApiWarehouse[]>([])
+  const [products, setProducts] = useState<ApiProduct[]>([])
+  const [poSupplierId, setPoSupplierId] = useState('')
+  const [poWarehouseId, setPoWarehouseId] = useState('')
+  const [poVariantId, setPoVariantId] = useState('')
+  const [poQty, setPoQty] = useState('10')
+  const [poCost, setPoCost] = useState('250')
+  const [poExpectedAt, setPoExpectedAt] = useState('')
+  const [poNotes, setPoNotes] = useState('')
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [creatingOrder, setCreatingOrder] = useState(false)
+
+  const allVariants = useMemo(() => {
+    const list: Array<{ id: string; sku: string; productName: string; cost: number }> = []
+    products.forEach((p) => {
+      ;(p.variants ?? []).forEach((v) => {
+        list.push({ id: v.id, sku: v.sku, productName: p.name, cost: v.cost })
+      })
+    })
+    return list
+  }, [products])
+
+  const loadOrders = useCallback(() => {
+    purchaseOrdersApi.list().then(setOrders).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    loadOrders()
+    suppliersApi.list().then((s) => {
+      setSuppliers(s)
+      if (s[0]) setPoSupplierId(s[0].id)
+    }).catch(() => {})
+    warehousesApi.list().then((w) => {
+      setWarehouses(w)
+      if (w[0]) setPoWarehouseId(w[0].id)
+    }).catch(() => {})
+    productsApi.list().then((p) => {
+      setProducts(p)
+      const firstVariant = p[0]?.variants?.[0]
+      if (firstVariant) {
+        setPoVariantId(firstVariant.id)
+        setPoCost(String(firstVariant.cost))
+      }
+    }).catch(() => {})
+  }, [loadOrders])
+
+  const openOrderDetail = (order: ApiPurchaseOrder) => {
+    setSelectedOrder(order)
+    purchaseOrdersApi.get(order.id).then(setSelectedOrder).catch(() => {})
+  }
+
+  const openReceiveModal = () => {
+    if (!selectedOrder) return
+    const defaults: Record<string, number> = {}
+    ;(selectedOrder.items ?? []).forEach((item) => {
+      if (item.pending > 0) {
+        defaults[item.id] = item.pending
+      }
+    })
+    setReceiveQuantities(defaults)
+    setReceiveError(null)
+    setReceive(true)
+  }
+
+  const handleConfirmReceive = async () => {
+    if (!selectedOrder) return
+    setReceiveError(null)
+    setSubmittingReceive(true)
+    try {
+      const payload = Object.entries(receiveQuantities)
+        .filter(([, q]) => Number(q) > 0)
+        .map(([item_id, q]) => ({ item_id, quantity_received: Number(q) }))
+
+      const updated = await purchaseOrdersApi.receive(selectedOrder.id, payload)
+      setSelectedOrder(updated)
+      setReceive(false)
+      setDone(true)
+      loadOrders()
+    } catch (err) {
+      setReceiveError(err instanceof Error ? err.message : 'No se pudo registrar la recepción.')
+    } finally {
+      setSubmittingReceive(false)
+    }
+  }
+
+  const handleCreateOrder = async () => {
+    setCreateError(null)
+    setCreatingOrder(true)
+    try {
+      const created = await purchaseOrdersApi.create({
+        supplier_id: poSupplierId,
+        warehouse_id: poWarehouseId,
+        expected_at: poExpectedAt || undefined,
+        notes: poNotes || undefined,
+        send_now: true,
+        items: [
+          {
+            product_variant_id: poVariantId,
+            quantity_ordered: Number(poQty) || 1,
+            unit_cost: Number(poCost) || 0,
+          },
+        ],
+      })
+      setCreateModal(false)
+      setPoNotes('')
+      loadOrders()
+      setSelectedOrder(created)
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Error al crear la orden de compra.')
+    } finally {
+      setCreatingOrder(false)
+    }
+  }
+
+  if (selectedOrder) {
+    const statusLabel = mapOrderStatusLabel(selectedOrder.status)
+    const orderItems = selectedOrder.items ?? []
+    const canReceive = !salesMode && (selectedOrder.status === 'sent' || selectedOrder.status === 'partially_received') && orderItems.some((i) => i.pending > 0)
+    const supplierName = selectedOrder.supplier?.legal_name || 'Proveedor'
+    const isPartiallyReceived = selectedOrder.status === 'partially_received'
+    const isFullyReceived = selectedOrder.status === 'received'
+
+    return <main className="page purchase-detail">
+      <div className="breadcrumb"><button onClick={() => setSelectedOrder(null)}>Compras</button><ChevronRight size={13} /><b>{selectedOrder.number}</b></div>
+      <div className="page-heading compact purchase-heading"><div><div className="detail-title-line"><h1>Orden {selectedOrder.number}</h1><OrderStatus status={statusLabel} /></div><p>Creada por {selectedOrder.creator?.name || 'Ana Martínez'} · Destino: {selectedOrder.warehouse?.name || 'Almacén Central'}</p></div><div className="heading-actions"><Button variant="secondary" icon={<FileText size={15} />} onClick={() => window.print()}>Descargar PDF</Button><Button disabled={!canReceive} onClick={openReceiveModal} icon={<PackageCheck size={16} />}>{isFullyReceived ? 'Mercancía recibida' : 'Recibir mercancía'}</Button></div></div>
+      <div className="purchase-layout"><div className="purchase-main">
+        <Card className="order-progress">
+          <div className="progress-step complete"><span><Check size={14} /></span><div><b>Borrador</b><small>Completado</small></div></div><i />
+          <div className={`progress-step ${selectedOrder.status !== 'draft' ? 'complete' : 'active'}`}><span><Check size={14} /></span><div><b>Enviada</b><small>{selectedOrder.status !== 'draft' ? 'Completado' : 'Actual'}</small></div></div><i />
+          <div className={`progress-step ${isFullyReceived ? 'complete' : isPartiallyReceived ? 'active' : ''}`}><span><Truck size={14} /></span><div><b>Recepción parcial</b><small>{isFullyReceived ? 'Completado' : isPartiallyReceived ? 'En curso' : 'Pendiente'}</small></div></div><i />
+          <div className={`progress-step ${isFullyReceived ? 'complete' : ''}`}><span><PackageCheck size={14} /></span><div><b>Recibida</b><small>{isFullyReceived ? 'Completado' : 'Pendiente'}</small></div></div>
+        </Card>
+        <Card className="order-items-card"><div className="detail-section-head"><div><h2>Productos de la orden</h2><p>{orderItems.length} productos · {selectedOrder.total_quantity_ordered} unidades solicitadas ({selectedOrder.total_quantity_received} recibidas)</p></div></div><div className="table-scroll"><table className="order-line-table"><thead><tr><th>Producto</th><th>Solicitado</th><th>Recibido</th><th>Pendiente</th><th>Costo unitario</th><th>Subtotal</th></tr></thead><tbody>{orderItems.map((item, i) => <tr key={item.id}><td><div className="product-cell"><img src={item.image || productImages[i % productImages.length]} alt="" /><span><b>{item.product_name || item.sku}</b><small>{item.sku}</small></span></div></td><td>{item.quantity_ordered} uds.</td><td><b className={item.quantity_received > 0 ? 'up' : ''}>{item.quantity_received} uds.</b></td><td><Badge tone={item.pending > 0 ? 'warning' : 'success'}>{item.pending} uds.</Badge></td><td>${item.unit_cost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td><td><b>${item.subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</b></td></tr>)}</tbody></table></div><div className="order-total"><span>Subtotal <b>${selectedOrder.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</b></span><span>Impuestos <b>$0.00</b></span><span className="grand-total">Total <b>${selectedOrder.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</b></span></div></Card>
+      </div><aside className="purchase-side"><Card className="form-card"><div className="side-card-title"><h2>Proveedor</h2></div><div className="supplier-card"><span>{initialsFromName(supplierName)}</span><div><b>{supplierName}</b><small>{selectedOrder.supplier?.contact_email || '—'}</small><small>{selectedOrder.supplier?.contact_phone || '—'}</small></div></div></Card></aside></div>
+      {receive && <Modal title="Recibir mercancía" subtitle={`Registra las cantidades recibidas para ${selectedOrder.number}.`} onClose={() => setReceive(false)} footer={<><Button variant="secondary" onClick={() => setReceive(false)}>Cancelar</Button><Button disabled={submittingReceive} icon={<PackageCheck size={15} />} onClick={handleConfirmReceive}>{submittingReceive ? 'Registrando...' : 'Confirmar recepción'}</Button></>}>
+        <div className="receive-destination"><Warehouse size={16} /><div><small>Almacén de destino</small><b>{selectedOrder.warehouse?.name} · {selectedOrder.warehouse?.code}</b></div></div>
+        <div className="receive-list">{orderItems.filter((item) => item.pending > 0).map((item, i) => <div className="receive-row" key={item.id}><img src={item.image || productImages[i % productImages.length]} alt="" /><div><b>{item.product_name || item.sku}</b><small>{item.sku} · Pendiente: {item.pending} uds.</small></div><label><span>Recibido</span><input type="number" min={0} max={item.pending} value={receiveQuantities[item.id] ?? item.pending} onChange={(e) => setReceiveQuantities((prev) => ({ ...prev, [item.id]: Number(e.target.value) }))} /></label></div>)}</div>
+        {receiveError && <p className="danger-text" style={{ marginTop: 10 }}>{receiveError}</p>}
+      </Modal>}
+      {done && <div className="toast"><span><Check size={16} /></span><div><b>Recepción registrada en PostgreSQL</b><p>El stock de {selectedOrder.warehouse?.name} fue actualizado automáticamente.</p></div><button onClick={() => setDone(false)}><X size={15} /></button></div>}
+    </main>
+  }
+
   return <main className="page operations-page">
-    <div className="page-heading compact"><div><div className="breadcrumb"><span>Compras</span><ChevronRight size={13} /><b>Órdenes</b></div><h1>Compras a proveedores</h1><p>Gestiona órdenes de compra y recepción de mercancía.</p></div><Button disabled={salesMode} icon={<Plus size={16} />}>Nueva orden</Button></div>
-    <Card className="ops-table-card"><div className="table-scroll"><table className="orders-table"><thead><tr><th>Orden</th><th>Proveedor</th><th>Artículos</th><th>Total</th><th>Creada</th><th>Entrega estimada</th><th>Estado</th><th /></tr></thead><tbody>{orders.map(order => <tr key={order.id}><td><button className="order-link" onClick={() => setDetail(true)}>{order.id}</button></td><td><div className="supplier-cell"><span>{order.supplier.split(' ').map(n=>n[0]).join('').slice(0,2)}</span><b>{order.supplier}</b></div></td><td>{order.items} productos</td><td><b>{order.total}</b></td><td>{order.created}</td><td>{order.delivery}</td><td><OrderStatus status={order.status} /></td><td><Button variant="ghost" size="icon" icon={<ChevronRight size={16} />} onClick={() => setDetail(true)} /></td></tr>)}</tbody></table></div></Card>
+    <div className="page-heading compact"><div><div className="breadcrumb"><span>Compras</span><ChevronRight size={13} /><b>Órdenes</b></div><h1>Compras a proveedores</h1><p>Gestiona órdenes de compra y recepción automática de mercancía en PostgreSQL.</p></div><Button disabled={salesMode} icon={<Plus size={16} />} onClick={() => setCreateModal(true)}>Nueva orden</Button></div>
+    <Card className="ops-table-card"><div className="table-scroll"><table className="orders-table"><thead><tr><th>Orden</th><th>Proveedor</th><th>Almacén destino</th><th>Artículos</th><th>Total</th><th>Entrega estimada</th><th>Estado</th><th /></tr></thead><tbody>{orders.map((order) => {
+      const supplierName = order.supplier?.legal_name || 'Proveedor'
+      const statusLabel = mapOrderStatusLabel(order.status)
+      return <tr key={order.id}><td><button className="order-link" onClick={() => openOrderDetail(order)}>{order.number}</button></td><td><div className="supplier-cell"><span>{initialsFromName(supplierName)}</span><b>{supplierName}</b></div></td><td>{order.warehouse?.name || '—'}</td><td>{order.items_count} productos ({order.total_quantity_ordered} uds.)</td><td><b>${order.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</b></td><td>{order.expected_at || '—'}</td><td><OrderStatus status={statusLabel} /></td><td><Button variant="ghost" size="icon" icon={<ChevronRight size={16} />} onClick={() => openOrderDetail(order)} /></td></tr>
+    })}</tbody></table></div></Card>
+    {createModal && <Modal title="Nueva orden de compra" subtitle="Genera una orden a proveedor con recepción vinculada a inventario." onClose={() => setCreateModal(false)} footer={<><Button variant="secondary" onClick={() => setCreateModal(false)}>Cancelar</Button><Button disabled={creatingOrder} onClick={handleCreateOrder}>{creatingOrder ? 'Creando...' : 'Crear y enviar orden'}</Button></>}>
+      <div className="modal-form-stack">
+        <div className="modal-form-grid">
+          <FormSelect label="Proveedor *" value={poSupplierId} onChange={setPoSupplierId}>
+            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.legal_name} ({s.code})</option>)}
+          </FormSelect>
+          <FormSelect label="Almacén de recepción *" value={poWarehouseId} onChange={setPoWarehouseId}>
+            {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.code})</option>)}
+          </FormSelect>
+        </div>
+        <FormSelect label="Variante / SKU a solicitar *" value={poVariantId} onChange={(val) => {
+          setPoVariantId(val)
+          const found = allVariants.find((v) => v.id === val)
+          if (found) setPoCost(String(found.cost))
+        }}>
+          {allVariants.map((v) => <option key={v.id} value={v.id}>{v.productName} · {v.sku}</option>)}
+        </FormSelect>
+        <div className="modal-form-grid">
+          <Field label="Cantidad a solicitar *" type="number" value={poQty} onChange={setPoQty} />
+          <Field label="Costo unitario (USD) *" type="number" value={poCost} onChange={setPoCost} prefix="$" />
+        </div>
+        <div className="modal-form-grid">
+          <Field label="Fecha estimada de entrega" type="date" value={poExpectedAt} onChange={setPoExpectedAt} />
+          <Field label="Notas" placeholder="Instrucciones de entrega..." value={poNotes} onChange={setPoNotes} />
+        </div>
+        {createError && <p className="danger-text">{createError}</p>}
+      </div>
+    </Modal>}
   </main>
 }
 
@@ -1018,16 +1189,85 @@ function CategoriesBrands({ salesMode }: { salesMode: boolean }) {
   </main>
 }
 
-const supplierRows = [
-  { name: 'TechDistribution LLC', code: 'PRV-0018', contact: 'Robert Chen', email: 'robert@techdistribution.com', phone: '+1 305 555 0184', products: 3, orders: 1, total: '$28,460', status: 'Activo', initials: 'TD' },
-  { name: 'Apple Authorized Dist.', code: 'PRV-0004', contact: 'Sofia Williams', email: 'sofia@appledist.com', phone: '+1 407 555 0122', products: 3, orders: 1, total: '$42,180', status: 'Activo', initials: 'AA' },
-  { name: 'Global Devices Inc.', code: 'PRV-0011', contact: 'Marco Bellini', email: 'marco@globaldevices.com', phone: '+1 813 555 0169', products: 3, orders: 1, total: '$16,840', status: 'Activo', initials: 'GD' },
-]
-
 function Suppliers({ salesMode }: { salesMode: boolean }) {
+  const [suppliers, setSuppliers] = useState<ApiSupplier[]>([])
+  const [modalOpen, setModalOpen] = useState(false)
+  const [code, setCode] = useState('')
+  const [legalName, setLegalName] = useState('')
+  const [taxId, setTaxId] = useState('')
+  const [contactName, setContactName] = useState('')
+  const [contactEmail, setContactEmail] = useState('')
+  const [contactPhone, setContactPhone] = useState('')
+  const [city, setCity] = useState('')
+  const [paymentTerms, setPaymentTerms] = useState('NET 30')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [savedToast, setSavedToast] = useState(false)
+
+  const loadSuppliers = useCallback(() => {
+    suppliersApi.list().then(setSuppliers).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    loadSuppliers()
+  }, [loadSuppliers])
+
+  const handleCreateSupplier = async () => {
+    setError(null)
+    setSaving(true)
+    try {
+      await suppliersApi.create({
+        code,
+        legal_name: legalName,
+        tax_id: taxId || undefined,
+        contact_name: contactName || undefined,
+        contact_email: contactEmail || undefined,
+        contact_phone: contactPhone || undefined,
+        city: city || undefined,
+        payment_terms: paymentTerms || 'NET 30',
+      })
+      setModalOpen(false)
+      setCode('')
+      setLegalName('')
+      setTaxId('')
+      setContactName('')
+      setContactEmail('')
+      setContactPhone('')
+      setCity('')
+      setSavedToast(true)
+      loadSuppliers()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al guardar el proveedor.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return <main className="page operations-page">
-    <div className="page-heading compact"><div><div className="breadcrumb"><span>Gestión</span><ChevronRight size={13} /><b>Proveedores</b></div><h1>Proveedores</h1><p>Datos fiscales y de contacto cifrados en reposo (`encrypted` cast).</p></div><Button disabled={salesMode} icon={<Plus size={16} />}>Nuevo proveedor</Button></div>
-    <Card className="ops-table-card"><div className="table-scroll"><table className="suppliers-table"><thead><tr><th>Proveedor</th><th>Contacto principal</th><th>Productos</th><th>Órdenes</th><th>Total comprado</th><th>Estado</th></tr></thead><tbody>{supplierRows.map(supplier => <tr key={supplier.code}><td><div className="supplier-link"><span>{supplier.initials}</span><div><b>{supplier.name}</b><small>{supplier.code}</small></div></div></td><td><div className="supplier-contact"><b>{supplier.contact}</b><small>{supplier.email}</small></div></td><td>{supplier.products}</td><td>{supplier.orders}</td><td><b>{supplier.total}</b></td><td><Badge tone="success" dot>{supplier.status}</Badge></td></tr>)}</tbody></table></div></Card>
+    <div className="page-heading compact"><div><div className="breadcrumb"><span>Gestión</span><ChevronRight size={13} /><b>Proveedores</b></div><h1>Proveedores</h1><p>Datos fiscales y de contacto cifrados en reposo (`encrypted` cast en PostgreSQL).</p></div><Button disabled={salesMode} icon={<Plus size={16} />} onClick={() => setModalOpen(true)}>Nuevo proveedor</Button></div>
+    <Card className="ops-table-card"><div className="table-scroll"><table className="suppliers-table"><thead><tr><th>Proveedor</th><th>Contacto principal (cifrado)</th><th>Condiciones</th><th>Productos</th><th>Órdenes</th><th>Total comprado</th><th>Estado</th></tr></thead><tbody>{suppliers.map((supplier) => <tr key={supplier.id}><td><div className="supplier-link"><span>{initialsFromName(supplier.legal_name)}</span><div><b>{supplier.legal_name}</b><small>{supplier.code} · {supplier.city || 'US'}</small></div></div></td><td><div className="supplier-contact"><b>{supplier.contact_name || '—'}</b><small>{supplier.contact_email || '—'} · {supplier.contact_phone || ''}</small></div></td><td><Badge tone="neutral">{supplier.payment_terms || 'NET 30'}</Badge></td><td>{supplier.products_count}</td><td>{supplier.purchase_orders_count}</td><td><b>${supplier.total_purchased.toLocaleString('en-US', { maximumFractionDigits: 0 })}</b></td><td><Badge tone={supplier.is_active ? 'success' : 'neutral'} dot>{supplier.is_active ? 'Activo' : 'Inactivo'}</Badge></td></tr>)}</tbody></table></div></Card>
+    {modalOpen && <Modal title="Nuevo proveedor" subtitle="El Tax ID, correo y teléfono se cifran automáticamente en reposo." onClose={() => setModalOpen(false)} footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button><Button disabled={saving} onClick={handleCreateSupplier}>{saving ? 'Guardando...' : 'Guardar proveedor'}</Button></>}>
+      <div className="modal-form-stack">
+        <div className="modal-form-grid">
+          <Field label="Código *" placeholder="Ej. PRV-0025" value={code} onChange={setCode} />
+          <Field label="Razón social *" placeholder="Ej. Asus Global Dist. LLC" value={legalName} onChange={setLegalName} />
+        </div>
+        <div className="modal-form-grid">
+          <Field label="Tax ID / RFC (cifrado)" placeholder="Ej. 65-9920114" value={taxId} onChange={setTaxId} />
+          <Field label="Condiciones de pago" placeholder="Ej. NET 30" value={paymentTerms} onChange={setPaymentTerms} />
+        </div>
+        <div className="modal-form-grid">
+          <Field label="Nombre de contacto" placeholder="Ej. Laura Gómez" value={contactName} onChange={setContactName} />
+          <Field label="Ciudad" placeholder="Ej. Miami" value={city} onChange={setCity} />
+        </div>
+        <div className="modal-form-grid">
+          <Field label="Correo de contacto (cifrado)" type="email" placeholder="laura@asusdist.com" value={contactEmail} onChange={setContactEmail} />
+          <Field label="Teléfono (cifrado)" placeholder="+1 305 555 0190" value={contactPhone} onChange={setContactPhone} />
+        </div>
+        {error && <p className="danger-text">{error}</p>}
+      </div>
+    </Modal>}
+    {savedToast && <div className="toast"><span><Check size={16} /></span><div><b>Proveedor registrado</b><p>Guardado en PostgreSQL con PII cifrada.</p></div><button onClick={() => setSavedToast(false)}><X size={15} /></button></div>}
   </main>
 }
 

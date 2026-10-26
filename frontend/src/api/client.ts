@@ -3,7 +3,9 @@ import type {
   ApiCategory,
   ApiDashboardData,
   ApiProduct,
+  ApiPurchaseOrder,
   ApiStockMovement,
+  ApiSupplier,
   ApiUser,
   ApiWarehouse,
   ApiWarehouseDetail,
@@ -227,6 +229,82 @@ export const brandsApi = {
     const res = await request<{ data: ApiBrand }>('/api/v1/brands', {
       method: 'POST',
       body: JSON.stringify(payload),
+    })
+    return res.data
+  },
+}
+
+export const suppliersApi = {
+  async list(): Promise<ApiSupplier[]> {
+    const res = await request<{ data: ApiSupplier[] }>('/api/v1/suppliers')
+    return res.data
+  },
+
+  async get(id: string): Promise<ApiSupplier> {
+    const res = await request<{ data: ApiSupplier }>(`/api/v1/suppliers/${id}`)
+    return res.data
+  },
+
+  async create(payload: {
+    code: string
+    legal_name: string
+    trade_name?: string
+    tax_id?: string
+    website?: string
+    contact_name?: string
+    contact_position?: string
+    contact_email?: string
+    contact_phone?: string
+    city?: string
+    state?: string
+    payment_terms?: string
+    lead_time?: string
+  }): Promise<ApiSupplier> {
+    const res = await request<{ data: ApiSupplier }>('/api/v1/suppliers', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    return res.data
+  },
+}
+
+export const purchaseOrdersApi = {
+  async list(): Promise<ApiPurchaseOrder[]> {
+    const res = await request<{ data: ApiPurchaseOrder[] }>('/api/v1/purchase-orders')
+    return res.data
+  },
+
+  async get(id: string): Promise<ApiPurchaseOrder> {
+    const res = await request<{ data: ApiPurchaseOrder }>(`/api/v1/purchase-orders/${id}`)
+    return res.data
+  },
+
+  async create(payload: {
+    supplier_id: string
+    warehouse_id: string
+    expected_at?: string
+    notes?: string
+    send_now?: boolean
+    items: Array<{
+      product_variant_id: string
+      quantity_ordered: number
+      unit_cost: number
+    }>
+  }): Promise<ApiPurchaseOrder> {
+    const res = await request<{ data: ApiPurchaseOrder }>('/api/v1/purchase-orders', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    return res.data
+  },
+
+  async receive(
+    id: string,
+    items: Array<{ item_id: string; quantity_received: number }>,
+  ): Promise<ApiPurchaseOrder> {
+    const res = await request<{ data: ApiPurchaseOrder }>(`/api/v1/purchase-orders/${id}/receive`, {
+      method: 'POST',
+      body: JSON.stringify({ items }),
     })
     return res.data
   },

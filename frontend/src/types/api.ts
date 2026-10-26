@@ -158,3 +158,79 @@ export interface ApiBrand {
   products_count?: number
   updated_at: string | null
 }
+
+export interface ApiSupplier {
+  id: string
+  code: string
+  legal_name: string
+  trade_name: string | null
+  tax_id: string | null
+  website: string | null
+  contact_name: string | null
+  contact_position: string | null
+  contact_email: string | null
+  contact_phone: string | null
+  address: string | null
+  city: string | null
+  state: string | null
+  postal_code: string | null
+  country: string
+  currency: string
+  payment_terms: string | null
+  lead_time: string | null
+  is_active: boolean
+  products_count: number
+  purchase_orders_count: number
+  total_purchased: number
+}
+
+export interface ApiPurchaseOrderItem {
+  id: string
+  product_variant_id: string
+  sku: string | null
+  color: string | null
+  storage: string | null
+  product_id: string | null
+  product_name: string | null
+  image: string | null
+  quantity_ordered: number
+  quantity_received: number
+  pending: number
+  unit_cost: number
+  subtotal: number
+}
+
+export interface ApiPurchaseOrder {
+  id: string
+  number: string
+  status: 'draft' | 'sent' | 'partially_received' | 'received' | 'cancelled'
+  expected_at: string | null
+  sent_at: string | null
+  received_at: string | null
+  total: number
+  notes: string | null
+  created_at: string | null
+  supplier: {
+    id: string
+    code: string
+    legal_name: string
+    trade_name: string | null
+    contact_name: string | null
+    contact_email: string | null
+    contact_phone: string | null
+  } | null
+  warehouse: {
+    id: string
+    code: string
+    name: string
+    city: string | null
+  } | null
+  creator: {
+    id: number
+    name: string
+  } | null
+  items_count: number
+  total_quantity_ordered: number
+  total_quantity_received: number
+  items?: ApiPurchaseOrderItem[]
+}

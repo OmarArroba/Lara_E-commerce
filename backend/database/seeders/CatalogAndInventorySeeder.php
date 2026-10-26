@@ -11,6 +11,7 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\PurchaseOrder;
+use App\Models\PurchaseOrderItem;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Models\Warehouse;
@@ -395,8 +396,8 @@ class CatalogAndInventorySeeder extends Seeder
             reason: 'Ajuste por conteo cíclico',
         );
 
-        // 7. Orden de compra de ejemplo (Recibida parcial)
-        $po = (new PurchaseOrder)->forceFill([
+        // 7. Órdenes de compra de ejemplo (Recibida parcial, Enviada y Recibida)
+        $po184 = (new PurchaseOrder)->forceFill([
             'number' => 'OC-2026-0184',
             'supplier_id' => $suppliers['PRV-0018']->id,
             'warehouse_id' => $warehouses['central']->id,
@@ -407,9 +408,9 @@ class CatalogAndInventorySeeder extends Seeder
             'notes' => 'Entrega prioritaria. Verificar números de serie y condición del empaque al recibir.',
             'created_by' => $admin->id,
         ]);
-        $po->save();
+        $po184->save();
 
-        $po->items()->createMany([
+        foreach ([
             [
                 'product_variant_id' => $variantsBySku['APL-IP15P-256-BLK']->id,
                 'quantity_ordered' => 24,
@@ -428,6 +429,75 @@ class CatalogAndInventorySeeder extends Seeder
                 'quantity_received' => 0,
                 'unit_cost' => 41.50,
             ],
+        ] as $row) {
+            (new PurchaseOrderItem)->forceFill(['purchase_order_id' => $po184->id] + $row)->save();
+        }
+
+        $po183 = (new PurchaseOrder)->forceFill([
+            'number' => 'OC-2026-0183',
+            'supplier_id' => $suppliers['PRV-0004']->id,
+            'warehouse_id' => $warehouses['norte']->id,
+            'status' => PurchaseOrderStatus::Sent,
+            'expected_at' => now()->addDays(3)->toDateString(),
+            'sent_at' => now()->subDays(5),
+            'total' => 42180.00,
+            'notes' => 'Reposición mensual para Sucursal Norte.',
+            'created_by' => $admin->id,
         ]);
+        $po183->save();
+
+        foreach ([
+            [
+                'product_variant_id' => $variantsBySku['APL-MBA-M3-512-SLV']->id,
+                'quantity_ordered' => 20,
+                'quantity_received' => 0,
+                'unit_cost' => 1210.00,
+            ],
+            [
+                'product_variant_id' => $variantsBySku['APL-IP15P-128-NT']->id,
+                'quantity_ordered' => 15,
+                'quantity_received' => 0,
+                'unit_cost' => 812.00,
+            ],
+            [
+                'product_variant_id' => $variantsBySku['APL-IP15P-512-BLU']->id,
+                'quantity_ordered' => 5,
+                'quantity_received' => 0,
+                'unit_cost' => 1160.00,
+            ],
+        ] as $row) {
+            (new PurchaseOrderItem)->forceFill(['purchase_order_id' => $po183->id] + $row)->save();
+        }
+
+        $po182 = (new PurchaseOrder)->forceFill([
+            'number' => 'OC-2026-0182',
+            'supplier_id' => $suppliers['PRV-0011']->id,
+            'warehouse_id' => $warehouses['fulfillment']->id,
+            'status' => PurchaseOrderStatus::Received,
+            'expected_at' => now()->subDays(2)->toDateString(),
+            'sent_at' => now()->subDays(8),
+            'received_at' => now()->subDays(2),
+            'total' => 16840.00,
+            'notes' => 'Orden recibida completa y auditada.',
+            'created_by' => $manager->id,
+        ]);
+        $po182->save();
+
+        foreach ([
+            [
+                'product_variant_id' => $variantsBySku['LEN-TPX1-I7-1TB']->id,
+                'quantity_ordered' => 10,
+                'quantity_received' => 10,
+                'unit_cost' => 1420.00,
+            ],
+            [
+                'product_variant_id' => $variantsBySku['LOG-MXM3S-GRY']->id,
+                'quantity_ordered' => 41,
+                'quantity_received' => 41,
+                'unit_cost' => 64.39,
+            ],
+        ] as $row) {
+            (new PurchaseOrderItem)->forceFill(['purchase_order_id' => $po182->id] + $row)->save();
+        }
     }
 }
