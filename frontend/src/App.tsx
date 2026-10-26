@@ -266,8 +266,8 @@ function Login({ onComplete }: { onComplete: (user: ApiUser) => void }) {
   </main>
 }
 
-function AppShell({ page, setPage, dark, setDark, salesMode, setSalesMode, user, productsCount, onSelectProduct, children }: {
-  page: Page; setPage: (p: Page) => void; dark: boolean; setDark: (v: boolean) => void; salesMode: boolean; setSalesMode: (v: boolean) => void; user: ApiUser | null; productsCount: number; onSelectProduct: (id: string) => void; children: ReactNode
+function AppShell({ page, setPage, dark, setDark, salesMode, setSalesMode, user, productsCount, onSelectProduct, onLogout, children }: {
+  page: Page; setPage: (p: Page) => void; dark: boolean; setDark: (v: boolean) => void; salesMode: boolean; setSalesMode: (v: boolean) => void; user: ApiUser | null; productsCount: number; onSelectProduct: (id: string) => void; onLogout: () => void; children: ReactNode
 }) {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -325,6 +325,7 @@ function AppShell({ page, setPage, dark, setDark, salesMode, setSalesMode, user,
       <div className="sidebar-bottom">
         <button className={`nav-item ${page === 'profile' ? 'active' : ''}`} onClick={() => { setPage('profile'); setMobileOpen(false) }}><Settings size={18} /><span>Perfil y seguridad</span></button>
         <button className="nav-item"><HelpCircle size={18} /><span>Centro de ayuda</span></button>
+        <button className="nav-item" onClick={() => { onLogout(); setMobileOpen(false) }}><LogOut size={18} /><span>Cerrar sesión</span></button>
         <button className="user-mini" onClick={() => setSalesMode(!salesMode)} title="Alternar vista previa de rol">
           <span className="avatar">{displayInitials}</span><span className="user-copy"><b>{displayName}</b><small>{displayRole}</small></span><MoreHorizontal size={17} />
         </button>
@@ -1692,11 +1693,182 @@ function Audit() {
 }
 
 function ProfileSecurity({ user, salesMode }: { user: ApiUser | null; salesMode: boolean }) {
-  const name = salesMode ? 'María López' : (user?.name || 'Ana Martínez')
+  const [section, setSection] = useState<'profile' | 'security' | 'sessions'>('profile')
+  const [saved, setSaved] = useState(false)
+
+  const fullName = salesMode ? 'María López' : (user?.name || 'Ana Martínez')
+  const parts = fullName.split(' ')
+  const firstName = parts[0] || 'Ana'
+  const lastName = parts.slice(1).join(' ') || 'Martínez'
   const email = salesMode ? 'sales@lara.test' : (user?.email || 'admin@lara.test')
   const role = salesMode ? 'sales' : (user?.roles?.[0] || 'super_admin')
-  return <main className="page profile-page"><div className="page-heading compact"><div><div className="breadcrumb"><span>Configuración</span><ChevronRight size={13}/><b>Perfil y seguridad</b></div><h1>Perfil y seguridad</h1><p>Sesión activa mediante Laravel Sanctum (cookies HttpOnly + CSRF).</p></div></div>
-    <Card className="profile-card"><div className="profile-person"><span className="avatar large">{initialsFromName(name)}</span><div><b>{name}</b><small>{email}</small><Badge tone="info">{role}</Badge></div></div><p style={{ marginTop: 16 }}>Permisos activos en sesión: <code>{(user?.permissions ?? []).join(', ') || 'Todos (super_admin)'}</code></p></Card>
+  const title = role === 'super_admin'
+    ? 'Directora de Operaciones'
+    : role === 'inventory_manager'
+      ? 'Jefe de Almacén'
+      : 'Ejecutiva de Ventas'
+  const initials = initialsFromName(fullName)
+
+  return <main className="page profile-page">
+    <div className="page-heading compact">
+      <div>
+        <div className="breadcrumb"><span>Configuración</span><ChevronRight size={13} /><b>Perfil y seguridad</b></div>
+        <h1>Perfil y seguridad</h1>
+        <p>Administra tu información personal, credenciales y sesiones activas en Laravel Sanctum.</p>
+      </div>
+    </div>
+    <div className="profile-layout">
+      <aside className="profile-nav-card">
+        <div className="profile-person">
+          <span className="avatar large">{initials}</span>
+          <div>
+            <b>{fullName}</b>
+            <small>{email}</small>
+            <Badge tone="info">{role}</Badge>
+          </div>
+        </div>
+        <nav>
+          <button className={section === 'profile' ? 'active' : ''} onClick={() => setSection('profile')}>
+            <CircleUserRound size={16} /> Información personal
+          </button>
+          <button className={section === 'security' ? 'active' : ''} onClick={() => setSection('security')}>
+            <ShieldCheck size={16} /> Contraseña y 2FA
+          </button>
+          <button className={section === 'sessions' ? 'active' : ''} onClick={() => setSection('sessions')}>
+            <Monitor size={16} /> Sesiones activas <Badge tone="neutral">3</Badge>
+          </button>
+        </nav>
+      </aside>
+      <div className="profile-content">
+        {section === 'profile' && (
+          <Card className="profile-card">
+            <div className="profile-card-head">
+              <div>
+                <h2>Información personal</h2>
+                <p>Actualiza tu nombre, correo corporativo y datos de contacto.</p>
+              </div>
+              <Badge tone="success" dot>Cuenta activa</Badge>
+            </div>
+            <div className="profile-photo">
+              <span className="avatar xlarge">{initials}</span>
+              <div>
+                <Button variant="secondary" size="sm" icon={<UploadCloud size={14} />}>Cambiar foto</Button>
+                <small>JPG, PNG o WebP. Máx. 2 MB.</small>
+              </div>
+            </div>
+            <div className="form-grid">
+              <Field label="Nombre" defaultValue={firstName} />
+              <Field label="Apellido" defaultValue={lastName} />
+              <div className="span-2">
+                <Field label="Correo electrónico" defaultValue={email} prefix={<Mail size={14} />} />
+              </div>
+              <Field label="Cargo" defaultValue={title} />
+              <Field label="Teléfono" defaultValue="+1 305 555 0188" prefix={<Phone size={14} />} />
+            </div>
+            <div className="twofa-details">
+              <span>
+                <small>Rol asignado (Spatie)</small>
+                <b>{role}</b>
+              </span>
+              <span>
+                <small>Permisos efectivos en sesión</small>
+                <b>{(user?.permissions ?? []).length} permisos activos</b>
+              </span>
+              <span>
+                <small>Último acceso</small>
+                <b>{formatRelativeDate(user?.last_login_at ?? null)}</b>
+              </span>
+            </div>
+            <div className="profile-actions">
+              <Button disabled={salesMode} onClick={() => setSaved(true)}>Guardar cambios</Button>
+            </div>
+          </Card>
+        )}
+
+        {section === 'security' && (
+          <div className="security-stack">
+            <Card className="profile-card">
+              <div className="profile-card-head">
+                <div>
+                  <h2>Cambiar contraseña</h2>
+                  <p>Usa una contraseña única de al menos 12 caracteres.</p>
+                </div>
+                <Badge tone="success">Segura</Badge>
+              </div>
+              <div className="password-fields">
+                <Field label="Contraseña actual" type="password" placeholder="••••••••••••" />
+                <Field label="Nueva contraseña" type="password" placeholder="Mínimo 12 caracteres" />
+                <Field label="Confirmar contraseña" type="password" placeholder="Repite la contraseña" />
+              </div>
+              <div className="password-strength">
+                <span><i /><i /><i /><i /></span>
+                <small>Contraseña fuerte</small>
+              </div>
+              <div className="profile-actions">
+                <Button disabled={salesMode} onClick={() => setSaved(true)}>Actualizar contraseña</Button>
+              </div>
+            </Card>
+
+            <Card className="profile-card twofa-card">
+              <div className="twofa-status">
+                <span><ShieldCheck size={21} /></span>
+                <div>
+                  <h2>Autenticación en dos pasos (2FA)</h2>
+                  <p>Tu cuenta está protegida con una aplicación de autenticación TOTP.</p>
+                </div>
+                <Badge tone="success" dot>Activada</Badge>
+              </div>
+              <div className="twofa-details">
+                <span><small>Método</small><b>Aplicación de autenticación</b></span>
+                <span><small>Activada el</small><b>12 de enero de 2026</b></span>
+                <span><small>Códigos de recuperación</small><b>7 de 10 disponibles</b></span>
+              </div>
+              <div className="profile-actions split">
+                <Button variant="secondary" onClick={() => setSaved(true)}>Ver códigos de recuperación</Button>
+                <Button variant="danger" disabled={salesMode}>Desactivar 2FA</Button>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {section === 'sessions' && (
+          <Card className="profile-card">
+            <div className="profile-card-head">
+              <div>
+                <h2>Sesiones activas (Laravel Sanctum)</h2>
+                <p>Dispositivos donde tu cuenta tiene cookies de sesión HttpOnly activas.</p>
+              </div>
+              <Button variant="danger" size="sm" onClick={() => setSaved(true)}>Cerrar otras sesiones</Button>
+            </div>
+            <div className="sessions-list">
+              {[
+                ['Navegador actual (Sesión SPA Sanctum)', 'Miami, FL · 127.0.0.1', 'Esta sesión · Activa ahora', 'desktop'],
+                ['Safari en iPhone 15 Pro', 'Miami, FL · 181.42.18.31', 'Hace 2 horas', 'mobile'],
+                ['Chrome en Estación de Almacén', 'Orlando, FL · 172.58.14.22', 'Ayer, 18:42', 'desktop'],
+              ].map((s, i) => (
+                <div className="session-row" key={s[0]}>
+                  <span className="session-icon">{s[3] === 'desktop' ? <Monitor size={19} /> : <CircleUserRound size={19} />}</span>
+                  <div><b>{s[0]}</b><small>{s[1]}</small></div>
+                  <span className={i === 0 ? 'current' : ''}>{i === 0 && <i />}{s[2]}</span>
+                  {i > 0 && <Button variant="ghost" size="sm" onClick={() => setSaved(true)}>Cerrar sesión</Button>}
+                </div>
+              ))}
+            </div>
+            <div className="session-note">
+              <ShieldCheck size={15} />
+              <span>¿No reconoces alguna sesión? Cambia tu contraseña inmediatamente para proteger tu cuenta.</span>
+            </div>
+          </Card>
+        )}
+      </div>
+    </div>
+    {saved && (
+      <div className="toast">
+        <span><Check size={16} /></span>
+        <div><b>Cambios guardados</b><p>La configuración de tu cuenta se actualizó correctamente.</p></div>
+        <button onClick={() => setSaved(false)}><X size={15} /></button>
+      </div>
+    )}
   </main>
 }
 
@@ -1734,7 +1906,7 @@ export default function App() {
 
   if (page === 'login') return <Login onComplete={handleLoginComplete} />
 
-  return <AppShell page={page} setPage={setPage} dark={dark} setDark={setDark} salesMode={salesMode} setSalesMode={setSalesMode} user={user} productsCount={productsCount} onSelectProduct={setSelectedProductId}>
+  return <AppShell page={page} setPage={setPage} dark={dark} setDark={setDark} salesMode={salesMode} setSalesMode={setSalesMode} user={user} productsCount={productsCount} onSelectProduct={setSelectedProductId} onLogout={handleLogout}>
     {page === 'dashboard' && <Dashboard setPage={setPage} salesMode={salesMode} user={user} onSelectProduct={setSelectedProductId} />}
     {page === 'products' && <Products salesMode={salesMode} setPage={setPage} onSelectProduct={setSelectedProductId} />}
     {page === 'product-form' && <ProductForm setPage={setPage} onProductCreated={(created) => { setSelectedProductId(created.id); setProductsCount((c) => c + 1); setPage('product-detail') }} />}
@@ -1748,6 +1920,5 @@ export default function App() {
     {page === 'users' && <UsersRoles salesMode={salesMode} />}
     {page === 'audit' && <Audit />}
     {page === 'profile' && <ProfileSecurity user={user} salesMode={salesMode} />}
-    <button className="demo-logout" onClick={handleLogout} title="Cerrar sesión"><LogOut size={16} /><span>Cerrar sesión</span></button>
   </AppShell>
 }
