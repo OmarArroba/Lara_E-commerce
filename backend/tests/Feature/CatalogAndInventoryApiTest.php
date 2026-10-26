@@ -264,3 +264,124 @@ it('permite crear proveedores con PII cifrada y gestionar ordenes de compra con 
 
     expect(Stock::where('product_variant_id', $variant->id)->where('warehouse_id', $warehouse->id)->value('quantity'))->toBe(10);
 });
+
+it('permite a super_admin gestionar usuarios y roles e impide a otros roles crear usuarios o autodesactivarse', function () {
+    $superAdmin = User::factory()->create(['email' => 'root@lara.test'])->assignRole(RoleName::SuperAdmin->value);
+    $admin = User::factory()->create(['email' => 'admin2@lara.test'])->assignRole(RoleName::Admin->value);
+    $sales = User::factory()->create(['email' => 'sales2@lara.test'])->assignRole(RoleName::Sales->value);
+
+    // 1. Admin puede listar usuarios (users.view), pero NO puede crear usuarios (users.manage = 403)
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/users')
+        ->assertOk()
+        ->assertJsonCount(3, 'data');
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/v1/users', [
+            'name' => 'No Autorizado',
+            'email' => 'unauthorized@lara.test',
+            'password' => 'password123',
+            'role' => RoleName::Sales->value,
+        ])
+        ->assertForbidden();
+
+    // 2. Sales no puede ni siquiera listar usuarios (403)
+    $this->actingAs($sales, 'sanctum')
+        ->getJson('/api/v1/users')
+        ->assertForbidden();
+
+    // 3. SuperAdmin crea un nuevo usuario con rol inventory_manager
+    $createdRes = $this->actingAs($superAdmin, 'sanctum')
+        ->postJson('/api/v1/users', [
+            'name' => 'Laura Almacén',
+            'email' => 'laura@lara.test',
+            'password' => 'password123',
+            'role' => RoleName::InventoryManager->value,
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.email', 'laura@lara.test')
+        ->assertJsonPath('data.roles.0', 'inventory_manager')
+        ->assertJsonPath('data.is_active', true);
+
+    $newUserId = $createdRes->json('data.id');
+
+    // 4. SuperAdmin puede desactivar al nuevo usuario, pero NO puede desactivarse a sí mismo (422)
+    $this->actingAs($superAdmin, 'sanctum')
+        ->patchJson("/api/v1/users/{$newUserId}", ['is_active' => false])
+        ->assertOk()
+        ->assertJsonPath('data.is_active', false);
+
+    $this->actingAs($superAdmin, 'sanctum')
+        ->patchJson("/api/v1/users/{$superAdmin->id}", ['is_active' => false])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('is_active');
+});
+
+it('permite consultar el registro de auditoria (activity_log) con filtros y bloquea a roles sin audit.view', function () {
+    $admin = User::factory()->create(['email' => 'admin@lara.test'])->assignRole(RoleName::SuperAdmin->value);
+    $sales = User::factory()->create(['email' => 'sales-audit@lara.test'])->assignRole(RoleName::Sales->value);
+
+    $this->seed(CatalogAndInventorySeeder::class);
+
+    // 1. Sales no tiene permiso audit.view (403)
+    $this->actingAs($sales, 'sanctum')
+        ->getJson('/api/v1/audit-logs')
+        ->assertForbidden();
+
+    // 2. Admin consulta todos los eventos de auditoría y filtra por canal inventory
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/audit-logs')
+        ->assertOk()
+        ->assertJsonStructure([
+            'data' => [
+                '*' => ['id', 'log_name', 'description', 'subject_type', 'causer', 'properties', 'created_at'],
+            ],
+        ]);
+
+    $invRes = $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/audit-logs?log_name=inventory')
+        ->assertOk();
+
+    expect(collect($invRes->json('data'))->every(fn (array $row) => $row['log_name'] === 'inventory'))->toBeTrue();
+});
+
+it('devuelve metricas de valorizacion en /reports y exporta CSV para roles con reports.export', function () {
+    $admin = User::factory()->create(['email' => 'admin@lara.test'])->assignRole(RoleName::SuperAdmin->value);
+    $sales = User::factory()->create(['email' => 'sales-report@lara.test'])->assignRole(RoleName::Sales->value);
+
+    $this->seed(CatalogAndInventorySeeder::class);
+
+    // 1. Sales puede consultar métricas de reportes (reports.view = 200)
+    $this->actingAs($sales, 'sanctum')
+        ->getJson('/api/v1/reports')
+        ->assertOk()
+        ->assertJsonStructure([
+            'data' => [
+                'summary' => [
+                    'total_units',
+                    'total_cost_value',
+                    'total_retail_value',
+                    'estimated_profit',
+                    'estimated_margin_percent',
+                    'active_products',
+                    'active_variants',
+                    'active_warehouses',
+                ],
+                'by_category',
+                'by_warehouse',
+            ],
+        ]);
+
+    // 2. Sales NO puede exportar CSV (reports.export = 403)
+    $this->actingAs($sales, 'sanctum')
+        ->get('/api/v1/reports/export')
+        ->assertForbidden();
+
+    // 3. Admin descarga el CSV valorizado y se registra evento en activity_log
+    $csvRes = $this->actingAs($admin, 'sanctum')
+        ->get('/api/v1/reports/export')
+        ->assertOk()
+        ->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+
+    expect($csvRes->getContent())->toContain('SKU,Producto,Categoria,Marca,Almacen_Codigo');
+});

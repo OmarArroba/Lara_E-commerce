@@ -1,9 +1,11 @@
 import type {
+  ApiAuditLog,
   ApiBrand,
   ApiCategory,
   ApiDashboardData,
   ApiProduct,
   ApiPurchaseOrder,
+  ApiReportData,
   ApiStockMovement,
   ApiSupplier,
   ApiUser,
@@ -307,5 +309,77 @@ export const purchaseOrdersApi = {
       body: JSON.stringify({ items }),
     })
     return res.data
+  },
+}
+
+export const usersApi = {
+  async list(): Promise<ApiUser[]> {
+    const res = await request<{ data: ApiUser[] }>('/api/v1/users')
+    return res.data
+  },
+
+  async create(payload: {
+    name: string
+    email: string
+    password: string
+    role: string
+    is_active?: boolean
+  }): Promise<ApiUser> {
+    const res = await request<{ data: ApiUser }>('/api/v1/users', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    return res.data
+  },
+
+  async update(
+    id: number,
+    payload: {
+      role?: string
+      is_active?: boolean
+    },
+  ): Promise<ApiUser> {
+    const res = await request<{ data: ApiUser }>(`/api/v1/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    })
+    return res.data
+  },
+}
+
+export const auditLogsApi = {
+  async list(params?: { log_name?: string; q?: string }): Promise<ApiAuditLog[]> {
+    const search = new URLSearchParams()
+    if (params?.log_name) search.set('log_name', params.log_name)
+    if (params?.q) search.set('q', params.q)
+    const qs = search.toString()
+    const res = await request<{ data: ApiAuditLog[] }>(`/api/v1/audit-logs${qs ? `?${qs}` : ''}`)
+    return res.data
+  },
+}
+
+export const reportsApi = {
+  async get(): Promise<ApiReportData> {
+    const res = await request<{ data: ApiReportData }>('/api/v1/reports')
+    return res.data
+  },
+
+  async downloadCsv(): Promise<void> {
+    const response = await fetch('/api/v1/reports/export', {
+      method: 'GET',
+      credentials: 'include',
+    })
+    if (!response.ok) {
+      throw new ApiError('No tienes permisos para exportar reportes.', response.status)
+    }
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'lara-inventario-valorizado.csv'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
   },
 }

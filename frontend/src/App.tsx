@@ -68,22 +68,27 @@ import {
   X,
 } from 'lucide-react'
 import {
+  auditLogsApi,
   authApi,
   brandsApi,
   categoriesApi,
   dashboardApi,
   productsApi,
   purchaseOrdersApi,
+  reportsApi,
   stockMovementsApi,
   suppliersApi,
+  usersApi,
   warehousesApi,
 } from '@/api/client'
 import type {
+  ApiAuditLog,
   ApiBrand,
   ApiCategory,
   ApiDashboardData,
   ApiProduct,
   ApiPurchaseOrder,
+  ApiReportData,
   ApiStockMovement,
   ApiSupplier,
   ApiUser,
@@ -1271,31 +1276,251 @@ function Suppliers({ salesMode }: { salesMode: boolean }) {
   </main>
 }
 
-function Reports() {
-  const [exported, setExported] = useState(false)
+function Reports({ salesMode }: { salesMode: boolean }) {
+  const [report, setReport] = useState<ApiReportData | null>(null)
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+
+  useEffect(() => {
+    reportsApi.get().then(setReport).catch(() => {})
+  }, [])
+
+  const handleExportCsv = async () => {
+    setExporting(true)
+    try {
+      await reportsApi.downloadCsv()
+      setToastMsg('Archivo CSV/Excel (lara-inventario-valorizado.csv) descargado.')
+    } catch (err) {
+      setToastMsg(err instanceof Error ? err.message : 'Error al exportar reporte.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const s = report?.summary
+
   return <main className="page reports-page">
-    <div className="page-heading compact"><div><div className="breadcrumb"><span>Gestión</span><ChevronRight size={13} /><b>Reportes</b></div><h1>Reportes</h1><p>Analiza el rendimiento y la salud de tu inventario.</p></div><div className="heading-actions"><Button variant="secondary" icon={<FileSpreadsheet size={15} />} onClick={() => setExported(true)}>Excel</Button><Button variant="secondary" icon={<FileText size={15} />} onClick={() => setExported(true)}>PDF</Button></div></div>
-    <div className="detail-stats report-stats"><Card><span>Valor total a costo</span><strong>$284,650</strong><small className="up">+8.4% vs. mes anterior</small></Card><Card><span>Valor potencial de venta</span><strong>$356,420</strong><small>Margen estimado 20.1%</small></Card><Card><span>Productos activos</span><strong>9</strong><small>11 variantes con SKU</small></Card><Card><span>Almacenes activos</span><strong>4</strong><small>Florida, US</small></Card></div>
-    {exported && <div className="toast"><span><Check size={16} /></span><div><b>Reporte exportado</b><p>El archivo se preparó correctamente.</p></div><button onClick={() => setExported(false)}><X size={15} /></button></div>}
+    <div className="page-heading compact"><div><div className="breadcrumb"><span>Gestión</span><ChevronRight size={13} /><b>Reportes</b></div><h1>Reportes y valorización</h1><p>Analiza el rendimiento financiero y la distribución real del inventario en PostgreSQL.</p></div><div className="heading-actions"><Button variant="secondary" disabled={salesMode || exporting} icon={<FileSpreadsheet size={15} />} onClick={handleExportCsv}>{exporting ? 'Exportando...' : 'Exportar CSV / Excel'}</Button><Button variant="secondary" icon={<FileText size={15} />} onClick={() => window.print()}>Imprimir / PDF</Button></div></div>
+    <div className="detail-stats report-stats">
+      <Card><span>Valor total a costo</span><strong>${s ? s.total_cost_value.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—'}</strong><small className="up">{s ? `${s.total_units.toLocaleString()} unidades totales` : 'Calculando...'}</small></Card>
+      <Card><span>Valor potencial de venta</span><strong>${s ? s.total_retail_value.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—'}</strong><small>Margen estimado {s ? `${s.estimated_margin_percent}%` : '—'} (${s ? s.estimated_profit.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '0'})</small></Card>
+      <Card><span>Productos activos</span><strong>{s ? s.active_products : 9}</strong><small>{s ? `${s.active_variants} variantes con SKU` : 'Catálogo activo'}</small></Card>
+      <Card><span>Almacenes activos</span><strong>{s ? s.active_warehouses : 4}</strong><small>Red Florida, US</small></Card>
+    </div>
+    <div className="detail-grid">
+      <Card className="ops-table-card">
+        <div className="table-toolbar ops-toolbar"><div><h2>Valorización por almacén</h2><p>Distribución de capital inmovilizado por centro logístico.</p></div></div>
+        <div className="table-scroll">
+          <table className="warehouse-stock-table">
+            <thead>
+              <tr>
+                <th>Almacén</th>
+                <th>Ciudad</th>
+                <th>Unidades</th>
+                <th>Valor a costo</th>
+                <th>Valor de venta</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(report?.by_warehouse ?? []).map((w) => (
+                <tr key={w.warehouse_id}>
+                  <td><b>{w.warehouse_name}</b> <small>({w.warehouse_code})</small></td>
+                  <td>{w.warehouse_city || '—'}</td>
+                  <td>{w.units.toLocaleString()} uds.</td>
+                  <td><b>${w.cost_value.toLocaleString('en-US', { minimumFractionDigits: 2 })}</b></td>
+                  <td>${w.retail_value.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      <Card className="ops-table-card">
+        <div className="table-toolbar ops-toolbar"><div><h2>Valorización por categoría</h2><p>Categorías con mayor peso en inventario.</p></div></div>
+        <div className="table-scroll">
+          <table className="warehouse-stock-table">
+            <thead>
+              <tr>
+                <th>Categoría</th>
+                <th>Unidades</th>
+                <th>Costo total</th>
+                <th>Venta estimada</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(report?.by_category ?? []).map((c) => (
+                <tr key={c.category_id}>
+                  <td><b>{c.category_name}</b></td>
+                  <td>{c.units.toLocaleString()} uds.</td>
+                  <td><b>${c.cost_value.toLocaleString('en-US', { maximumFractionDigits: 0 })}</b></td>
+                  <td>${c.retail_value.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+    {toastMsg && <div className="toast"><span><Check size={16} /></span><div><b>Reportes</b><p>{toastMsg}</p></div><button onClick={() => setToastMsg(null)}><X size={15} /></button></div>}
   </main>
 }
 
-const userRows = [
-  ['Ana Martínez','admin@lara.test','AM','super_admin','Activo','Hoy',true],
-  ['Carlos Ruiz','inventory@lara.test','CR','inventory_manager','Activo','Hoy',true],
-  ['María López','sales@lara.test','ML','sales','Activo','Hoy',false],
-]
-
 function UsersRoles({ salesMode }: { salesMode: boolean }) {
+  const [users, setUsers] = useState<ApiUser[]>([])
+  const [modalOpen, setModalOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('password123')
+  const [role, setRole] = useState('inventory_manager')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+
+  const loadUsers = useCallback(() => {
+    usersApi.list().then(setUsers).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    loadUsers()
+  }, [loadUsers])
+
+  const handleCreateUser = async () => {
+    setError(null)
+    setSaving(true)
+    try {
+      await usersApi.create({ name, email, password, role, is_active: true })
+      setModalOpen(false)
+      setName('')
+      setEmail('')
+      setPassword('password123')
+      setToastMsg('Nuevo usuario creado y rol asignado en PostgreSQL.')
+      loadUsers()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo crear el usuario.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleToggleActive = async (targetUser: ApiUser) => {
+    try {
+      await usersApi.update(targetUser.id, { is_active: !targetUser.is_active })
+      setToastMsg(`Estado de ${targetUser.name} actualizado.`)
+      loadUsers()
+    } catch (err) {
+      setToastMsg(err instanceof Error ? err.message : 'No tienes permisos para modificar este usuario.')
+    }
+  }
+
   return <main className="page users-page">
-    <div className="page-heading compact"><div><div className="breadcrumb"><span>Administración</span><ChevronRight size={13}/><b>Usuarios y roles</b></div><h1>Usuarios y roles</h1><p>Control de acceso basado en roles (`spatie/laravel-permission`).</p></div><Button disabled={salesMode} icon={<UserPlus size={16}/>}>Invitar usuario</Button></div>
-    <Card className="ops-table-card"><div className="table-scroll"><table className="users-table"><thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>2FA</th><th>Último acceso</th></tr></thead><tbody>{userRows.map(user=><tr key={user[1] as string}><td><div className="user-table-cell"><span>{user[2]}</span><div><b>{user[0]}</b><small>{user[1]}</small></div></div></td><td><Badge tone={user[3]==='super_admin'?'info':'neutral'}>{String(user[3])}</Badge></td><td><Badge tone="success" dot>{user[4]}</Badge></td><td>{user[6]?<span className="twofa-on"><ShieldCheck size={13}/> Activado</span>:<span className="twofa-off">No activado</span>}</td><td>{user[5]}</td></tr>)}</tbody></table></div></Card>
+    <div className="page-heading compact"><div><div className="breadcrumb"><span>Administración</span><ChevronRight size={13} /><b>Usuarios y roles</b></div><h1>Usuarios y roles</h1><p>Control de acceso basado en roles (`spatie/laravel-permission`) conectado a PostgreSQL.</p></div><Button disabled={salesMode} icon={<UserPlus size={16} />} onClick={() => setModalOpen(true)}>Invitar usuario</Button></div>
+    <Card className="ops-table-card"><div className="table-scroll"><table className="users-table"><thead><tr><th>Usuario</th><th>Rol asignado</th><th>Permisos</th><th>Estado</th><th>Último acceso</th><th /></tr></thead><tbody>{users.map((u) => {
+      const primaryRole = u.roles[0] || 'sales'
+      return <tr key={u.id}><td><div className="user-table-cell"><span>{initialsFromName(u.name)}</span><div><b>{u.name}</b><small>{u.email}</small></div></div></td><td><Badge tone={primaryRole === 'super_admin' ? 'info' : 'neutral'}>{primaryRole}</Badge></td><td><span className="twofa-on"><ShieldCheck size={13} /> {u.permissions.length} permisos</span></td><td><Badge tone={u.is_active ? 'success' : 'danger'} dot>{u.is_active ? 'Activo' : 'Inactivo'}</Badge></td><td>{formatRelativeDate(u.last_login_at)}</td><td><Button variant="ghost" disabled={salesMode} onClick={() => handleToggleActive(u)}>{u.is_active ? 'Desactivar' : 'Activar'}</Button></td></tr>
+    })}</tbody></table></div></Card>
+    {modalOpen && <Modal title="Invitar nuevo usuario" subtitle="Asigna credenciales y rol RBAC de Spatie (requiere rol super_admin)." onClose={() => setModalOpen(false)} footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button><Button disabled={saving} onClick={handleCreateUser}>{saving ? 'Creando...' : 'Crear usuario'}</Button></>}>
+      <div className="modal-form-stack">
+        <div className="modal-form-grid">
+          <Field label="Nombre completo *" placeholder="Ej. Diego Morales" value={name} onChange={setName} />
+          <Field label="Correo electrónico *" type="email" placeholder="diego@lara.test" value={email} onChange={setEmail} />
+        </div>
+        <div className="modal-form-grid">
+          <FormSelect label="Rol del sistema *" value={role} onChange={setRole}>
+            <option value="super_admin">super_admin (Control total)</option>
+            <option value="admin">admin (Catálogo, compras y reportes)</option>
+            <option value="inventory_manager">inventory_manager (Stock y órdenes)</option>
+            <option value="sales">sales (Solo lectura)</option>
+          </FormSelect>
+          <Field label="Contraseña temporal (mín. 8) *" type="password" value={password} onChange={setPassword} />
+        </div>
+        {error && <p className="danger-text">{error}</p>}
+      </div>
+    </Modal>}
+    {toastMsg && <div className="toast"><span><Check size={16} /></span><div><b>Usuarios y roles</b><p>{toastMsg}</p></div><button onClick={() => setToastMsg(null)}><X size={15} /></button></div>}
   </main>
 }
 
 function Audit() {
-  return <main className="page audit-page"><div className="page-heading compact"><div><div className="breadcrumb"><span>Administración</span><ChevronRight size={13}/><b>Auditoría</b></div><h1>Registro de auditoría</h1><p>Trazabilidad de acciones sensibles mediante `spatie/laravel-activitylog`.</p></div></div>
-    <div className="audit-summary"><Card><span className="ops-icon info"><History size={18}/></span><div><small>Libro de stock</small><b>Inmutable</b><em className="up">Protegido por trigger PG</em></div></Card><Card><span className="ops-icon warning"><ShieldCheck size={18}/></span><div><small>Ajustes y salidas</small><b>Reautenticados</b><em>Exigen contraseña actual</em></div></Card><Card><span className="ops-icon success">< BarChart3 size={18}/></span><div><small>PII Proveedores</small><b>Cifrada</b><em>Cast encrypted activo</em></div></Card></div>
+  const [logs, setLogs] = useState<ApiAuditLog[]>([])
+  const [filterLog, setFilterLog] = useState('')
+  const [query, setQuery] = useState('')
+
+  const loadLogs = useCallback(() => {
+    auditLogsApi
+      .list({
+        log_name: filterLog || undefined,
+        q: query || undefined,
+      })
+      .then(setLogs)
+      .catch(() => {})
+  }, [filterLog, query])
+
+  useEffect(() => {
+    loadLogs()
+  }, [loadLogs])
+
+  const logBadgeTone = (logName: string): Tone => {
+    if (logName === 'inventory') return 'warning'
+    if (logName === 'purchases') return 'info'
+    if (logName === 'users') return 'danger'
+    return 'success'
+  }
+
+  return <main className="page audit-page">
+    <div className="page-heading compact"><div><div className="breadcrumb"><span>Administración</span><ChevronRight size={13} /><b>Auditoría</b></div><h1>Registro de auditoría</h1><p>Trazabilidad en tiempo real desde la tabla `activity_log` (`spatie/laravel-activitylog`).</p></div><Button variant="secondary" icon={<RefreshCw size={15} />} onClick={loadLogs}>Actualizar</Button></div>
+    <div className="audit-summary">
+      <Card><span className="ops-icon info"><History size={18} /></span><div><small>Libro de stock</small><b>Inmutable</b><em className="up">Protegido por trigger PG</em></div></Card>
+      <Card><span className="ops-icon warning"><ShieldCheck size={18} /></span><div><small>Ajustes y salidas</small><b>Reautenticados</b><em>Exigen contraseña actual</em></div></Card>
+      <Card><span className="ops-icon success"><BarChart3 size={18} /></span><div><small>Eventos registrados</small><b>{logs.length} eventos</b><em>En `activity_log`</em></div></Card>
+    </div>
+    <Card className="ops-table-card">
+      <div className="table-toolbar">
+        <div className="table-search"><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por descripción, SKU, orden o usuario..." /></div>
+        <div className="filter-row">
+          <select aria-label="Canal de auditoría" value={filterLog} onChange={(e) => setFilterLog(e.target.value)}>
+            <option value="">Todos los canales</option>
+            <option value="inventory">inventory (Movimientos sensibles)</option>
+            <option value="purchases">purchases (Órdenes de compra)</option>
+            <option value="catalog">catalog (Productos y proveedores)</option>
+            <option value="users">users (Usuarios y roles)</option>
+          </select>
+        </div>
+      </div>
+      <div className="table-scroll">
+        <table className="users-table">
+          <thead>
+            <tr>
+              <th>Canal</th>
+              <th>Evento / Descripción</th>
+              <th>Entidad</th>
+              <th>Ejecutado por</th>
+              <th>Metadatos (JSON)</th>
+              <th>Fecha</th>
+            </tr>
+          </thead>
+          <tbody>
+            {logs.map((log) => (
+              <tr key={log.id}>
+                <td><Badge tone={logBadgeTone(log.log_name)} dot>{log.log_name}</Badge></td>
+                <td><b>{log.description}</b></td>
+                <td><code>{log.subject_type || 'Sistema'}</code></td>
+                <td>
+                  <div className="user-table-cell">
+                    <span>{initialsFromName(log.causer?.name || 'Sistema')}</span>
+                    <div>
+                      <b>{log.causer?.name || 'Sistema'}</b>
+                      <small>{log.causer?.email || '—'}</small>
+                    </div>
+                  </div>
+                </td>
+                <td><code>{JSON.stringify(log.properties)}</code></td>
+                <td>{formatRelativeDate(log.created_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   </main>
 }
 
@@ -1352,7 +1577,7 @@ export default function App() {
     {page === 'purchases' && <Purchases salesMode={salesMode} />}
     {page === 'categories' && <CategoriesBrands salesMode={salesMode} />}
     {page === 'suppliers' && <Suppliers salesMode={salesMode} />}
-    {page === 'reports' && <Reports />}
+    {page === 'reports' && <Reports salesMode={salesMode} />}
     {page === 'users' && <UsersRoles salesMode={salesMode} />}
     {page === 'audit' && <Audit />}
     {page === 'profile' && <ProfileSecurity user={user} salesMode={salesMode} />}

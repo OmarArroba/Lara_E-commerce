@@ -135,6 +135,16 @@ class ProductController extends Controller
                 }
             }
 
+            activity('catalog')
+                ->performedOn($product)
+                ->causedBy($user)
+                ->withProperties([
+                    'base_sku' => $product->base_sku,
+                    'name' => $product->name,
+                    'variants_count' => count($validated['variants']),
+                ])
+                ->log("Producto creado: {$product->name} ({$product->base_sku})");
+
             return $product->load(['category', 'brand', 'supplier', 'images', 'variants.stocks.warehouse']);
         });
 

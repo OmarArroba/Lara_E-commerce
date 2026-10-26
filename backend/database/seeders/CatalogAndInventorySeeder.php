@@ -499,5 +499,23 @@ class CatalogAndInventorySeeder extends Seeder
         ] as $row) {
             (new PurchaseOrderItem)->forceFill(['purchase_order_id' => $po182->id] + $row)->save();
         }
+
+        activity('purchases')
+            ->performedOn($po184)
+            ->causedBy($admin)
+            ->withProperties(['number' => 'OC-2026-0184', 'received_units' => 38, 'status' => 'partially_received'])
+            ->log('Mercancía recibida (38 uds.) en orden OC-2026-0184');
+
+        activity('purchases')
+            ->performedOn($po183)
+            ->causedBy($admin)
+            ->withProperties(['number' => 'OC-2026-0183', 'total' => 42180.00, 'status' => 'sent'])
+            ->log('Orden de compra creada: OC-2026-0183');
+
+        activity('catalog')
+            ->performedOn($suppliers['PRV-0018'])
+            ->causedBy($admin)
+            ->withProperties(['code' => 'PRV-0018', 'legal_name' => 'TechDistribution LLC'])
+            ->log('Proveedor verificado con PII cifrada: TechDistribution LLC (PRV-0018)');
     }
 }

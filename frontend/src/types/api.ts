@@ -234,3 +234,47 @@ export interface ApiPurchaseOrder {
   total_quantity_received: number
   items?: ApiPurchaseOrderItem[]
 }
+
+export interface ApiAuditLog {
+  id: number
+  log_name: string
+  description: string
+  subject_type: string | null
+  subject_id: string | null
+  causer: {
+    id: number
+    name: string
+    email: string
+  } | null
+  properties: Record<string, unknown>
+  created_at: string | null
+}
+
+export interface ApiReportData {
+  summary: {
+    total_units: number
+    total_cost_value: number
+    total_retail_value: number
+    estimated_profit: number
+    estimated_margin_percent: number
+    active_products: number
+    active_variants: number
+    active_warehouses: number
+  }
+  by_category: Array<{
+    category_id: string
+    category_name: string
+    units: number
+    cost_value: number
+    retail_value: number
+  }>
+  by_warehouse: Array<{
+    warehouse_id: string
+    warehouse_code: string
+    warehouse_name: string
+    warehouse_city: string | null
+    units: number
+    cost_value: number
+    retail_value: number
+  }>
+}

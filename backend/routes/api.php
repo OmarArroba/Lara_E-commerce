@@ -1,13 +1,16 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BrandController;
 use App\Http\Controllers\Api\V1\CategoryController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\PurchaseOrderController;
+use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\SupplierController;
+use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\WarehouseController;
 use Illuminate\Support\Facades\Route;
 
@@ -48,5 +51,14 @@ Route::prefix('v1')->group(function () {
 
         Route::get('stock-movements', [StockMovementController::class, 'index']);
         Route::post('stock-movements', [StockMovementController::class, 'store']);
+
+        Route::get('users', [UserController::class, 'index']);
+        Route::post('users', [UserController::class, 'store']);
+        Route::patch('users/{user}', [UserController::class, 'update']);
+
+        Route::get('audit-logs', [AuditLogController::class, 'index']);
+
+        Route::get('reports', [ReportController::class, 'index']);
+        Route::get('reports/export', [ReportController::class, 'export']);
     });
 });
