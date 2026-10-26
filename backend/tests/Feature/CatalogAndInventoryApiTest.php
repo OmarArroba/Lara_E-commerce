@@ -385,3 +385,57 @@ it('devuelve metricas de valorizacion en /reports y exporta CSV para roles con r
 
     expect($csvRes->getContent())->toContain('SKU,Producto,Categoria,Marca,Almacen_Codigo');
 });
+
+it('permite crear y editar almacenes y realizar busquedas globales en /search', function () {
+    $admin = User::factory()->create(['email' => 'admin@lara.test'])->assignRole(RoleName::SuperAdmin->value);
+    $sales = User::factory()->create(['email' => 'sales-wh@lara.test'])->assignRole(RoleName::Sales->value);
+
+    $this->seed(CatalogAndInventorySeeder::class);
+
+    // 1. Sales no puede crear almacenes (403)
+    $this->actingAs($sales, 'sanctum')
+        ->postJson('/api/v1/warehouses', [
+            'code' => 'ALM-JAX-05',
+            'name' => 'Hub Jacksonville',
+        ])
+        ->assertForbidden();
+
+    // 2. Admin crea y edita un nuevo almacén
+    $whRes = $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/v1/warehouses', [
+            'code' => 'ALM-JAX-05',
+            'name' => 'Hub Jacksonville',
+            'city' => 'Jacksonville, FL',
+            'capacity_units' => 6500,
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.code', 'ALM-JAX-05')
+        ->assertJsonPath('data.capacity_units', 6500);
+
+    $whId = $whRes->json('data.id');
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/warehouses/{$whId}", [
+            'name' => 'Hub Logístico Jacksonville',
+            'status' => 'maintenance',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.name', 'Hub Logístico Jacksonville')
+        ->assertJsonPath('data.status', 'maintenance');
+
+    // 3. Búsqueda global (/api/v1/search?q=...) devuelve productos, almacenes y órdenes de compra
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/search?q=iPhone')
+        ->assertOk()
+        ->assertJsonPath('data.products.0.name', 'iPhone 15 Pro');
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/search?q=Jacksonville')
+        ->assertOk()
+        ->assertJsonPath('data.warehouses.0.code', 'ALM-JAX-05');
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/search?q=OC-2026-0184')
+        ->assertOk()
+        ->assertJsonPath('data.purchase_orders.0.number', 'OC-2026-0184');
+});

@@ -3,6 +3,7 @@ import type {
   ApiBrand,
   ApiCategory,
   ApiDashboardData,
+  ApiGlobalSearchResults,
   ApiProduct,
   ApiPurchaseOrder,
   ApiReportData,
@@ -192,6 +193,47 @@ export const warehousesApi = {
 
   async get(id: string): Promise<ApiWarehouseDetail> {
     const res = await request<{ data: ApiWarehouseDetail }>(`/api/v1/warehouses/${id}`)
+    return res.data
+  },
+
+  async create(payload: {
+    code: string
+    name: string
+    address?: string
+    city?: string
+    capacity_units?: number
+    status?: 'operational' | 'maintenance' | 'closed'
+  }): Promise<ApiWarehouse> {
+    const res = await request<{ data: ApiWarehouse }>('/api/v1/warehouses', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    return res.data
+  },
+
+  async update(
+    id: string,
+    payload: {
+      name?: string
+      address?: string
+      city?: string
+      capacity_units?: number
+      status?: 'operational' | 'maintenance' | 'closed'
+    },
+  ): Promise<ApiWarehouse> {
+    const res = await request<{ data: ApiWarehouse }>(`/api/v1/warehouses/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    })
+    return res.data
+  },
+}
+
+export const searchApi = {
+  async query(q: string): Promise<ApiGlobalSearchResults> {
+    const res = await request<{ data: ApiGlobalSearchResults }>(
+      `/api/v1/search?q=${encodeURIComponent(q)}`,
+    )
     return res.data
   },
 }

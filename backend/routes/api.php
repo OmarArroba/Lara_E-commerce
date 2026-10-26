@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\PurchaseOrderController;
 use App\Http\Controllers\Api\V1\ReportController;
+use App\Http\Controllers\Api\V1\SearchController;
 use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\UserController;
@@ -26,6 +27,7 @@ Route::prefix('v1')->group(function () {
 
     Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('dashboard', [DashboardController::class, 'index']);
+        Route::get('search', [SearchController::class, 'index']);
 
         Route::get('categories', [CategoryController::class, 'index']);
         Route::post('categories', [CategoryController::class, 'store']);
@@ -38,7 +40,9 @@ Route::prefix('v1')->group(function () {
         Route::get('suppliers/{supplier}', [SupplierController::class, 'show']);
 
         Route::get('warehouses', [WarehouseController::class, 'index']);
+        Route::post('warehouses', [WarehouseController::class, 'store']);
         Route::get('warehouses/{warehouse}', [WarehouseController::class, 'show']);
+        Route::patch('warehouses/{warehouse}', [WarehouseController::class, 'update']);
 
         Route::get('products', [ProductController::class, 'index']);
         Route::post('products', [ProductController::class, 'store']);

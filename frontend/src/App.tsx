@@ -76,6 +76,7 @@ import {
   productsApi,
   purchaseOrdersApi,
   reportsApi,
+  searchApi,
   stockMovementsApi,
   suppliersApi,
   usersApi,
@@ -86,6 +87,7 @@ import type {
   ApiBrand,
   ApiCategory,
   ApiDashboardData,
+  ApiGlobalSearchResults,
   ApiProduct,
   ApiPurchaseOrder,
   ApiReportData,
@@ -264,11 +266,33 @@ function Login({ onComplete }: { onComplete: (user: ApiUser) => void }) {
   </main>
 }
 
-function AppShell({ page, setPage, dark, setDark, salesMode, setSalesMode, user, productsCount, children }: {
-  page: Page; setPage: (p: Page) => void; dark: boolean; setDark: (v: boolean) => void; salesMode: boolean; setSalesMode: (v: boolean) => void; user: ApiUser | null; productsCount: number; children: ReactNode
+function AppShell({ page, setPage, dark, setDark, salesMode, setSalesMode, user, productsCount, onSelectProduct, children }: {
+  page: Page; setPage: (p: Page) => void; dark: boolean; setDark: (v: boolean) => void; salesMode: boolean; setSalesMode: (v: boolean) => void; user: ApiUser | null; productsCount: number; onSelectProduct: (id: string) => void; children: ReactNode
 }) {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [searchModalOpen, setSearchModalOpen] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [searchResults, setSearchResults] = useState<ApiGlobalSearchResults | null>(null)
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchModalOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      setSearchResults(null)
+      return
+    }
+    searchApi.query(searchTerm.trim()).then(setSearchResults).catch(() => {})
+  }, [searchTerm])
 
   const nav = [
     { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
@@ -310,7 +334,7 @@ function AppShell({ page, setPage, dark, setDark, salesMode, setSalesMode, user,
     <div className="workspace">
       <header className="topbar">
         <Button variant="ghost" size="icon" className="mobile-menu" onClick={() => setMobileOpen(true)} icon={<Menu size={20} />} />
-        <div className="global-search"><Search size={17} /><input aria-label="Búsqueda global" placeholder="Buscar productos, SKU, órdenes..." /><kbd><Command size={11} /> K</kbd></div>
+        <div className="global-search" onClick={() => setSearchModalOpen(true)}><Search size={17} /><input aria-label="Búsqueda global" value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setSearchModalOpen(true) }} placeholder="Buscar productos, SKU, almacenes u órdenes (⌘K)..." /><kbd><Command size={11} /> K</kbd></div>
         <div className="top-actions">
           <Button variant="ghost" size="icon" onClick={() => setDark(!dark)} icon={dark ? <Sun size={18} /> : <Moon size={18} />} />
           <button className="notification" aria-label="Notificaciones"><Bell size={18} /><i /></button>
@@ -320,6 +344,36 @@ function AppShell({ page, setPage, dark, setDark, salesMode, setSalesMode, user,
       </header>
       {salesMode && <div className="role-banner"><Eye size={15} /><span>Modo <b>sales</b> activo: las acciones de edición están deshabilitadas.</span>{user && !user.roles.includes('sales') && <button onClick={() => setSalesMode(false)}>Salir de vista previa</button>}</div>}
       {children}
+      {searchModalOpen && <Modal title="Búsqueda global (⌘K)" subtitle="Encuentra al instante productos, SKUs, almacenes u órdenes de compra en PostgreSQL." onClose={() => setSearchModalOpen(false)} footer={<Button variant="secondary" onClick={() => setSearchModalOpen(false)}>Cerrar</Button>}>
+        <div className="modal-form-stack">
+          <Field label="Buscar en todo el sistema" placeholder="Ej. iPhone, APL-IP15P, ALM-MIA, OC-2026..." value={searchTerm} onChange={setSearchTerm} autoFocus prefix={<Search size={15} />} />
+          {searchResults && (
+            <div className="alert-list">
+              {searchResults.products.map((p) => (
+                <button key={p.id} className="alert-row" onClick={() => { onSelectProduct(p.id); setPage('product-detail'); setSearchModalOpen(false) }}>
+                  <span><b>{p.name}</b><small>Producto · {p.sku} ({p.category || 'Catálogo'})</small></span>
+                  <ChevronRight size={15} />
+                </button>
+              ))}
+              {searchResults.warehouses.map((w) => (
+                <button key={w.id} className="alert-row" onClick={() => { setPage('warehouses'); setSearchModalOpen(false) }}>
+                  <span><b>{w.name}</b><small>Almacén · {w.code} ({w.city || 'US'})</small></span>
+                  <ChevronRight size={15} />
+                </button>
+              ))}
+              {searchResults.purchase_orders.map((po) => (
+                <button key={po.id} className="alert-row" onClick={() => { setPage('purchases'); setSearchModalOpen(false) }}>
+                  <span><b>{po.number}</b><small>Orden de compra · {po.supplier || 'Proveedor'} (${po.total.toLocaleString()})</small></span>
+                  <ChevronRight size={15} />
+                </button>
+              ))}
+              {searchResults.products.length === 0 && searchResults.warehouses.length === 0 && searchResults.purchase_orders.length === 0 && (
+                <p className="muted">No se encontraron coincidencias para "{searchTerm}".</p>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>}
     </div>
   </div>
 }
@@ -886,13 +940,85 @@ function Inventory({ salesMode }: { salesMode: boolean }) {
 function Warehouses({ salesMode }: { salesMode: boolean }) {
   const [warehouses, setWarehouses] = useState<ApiWarehouse[]>([])
   const [selectedDetail, setSelectedDetail] = useState<ApiWarehouseDetail | null>(null)
+  const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null)
+  const [wCode, setWCode] = useState('')
+  const [wName, setWName] = useState('')
+  const [wCity, setWCity] = useState('')
+  const [wAddress, setWAddress] = useState('')
+  const [wCapacity, setWCapacity] = useState('5000')
+  const [wStatus, setWStatus] = useState<'operational' | 'maintenance' | 'closed'>('operational')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
 
-  useEffect(() => {
+  const loadWarehouses = useCallback(() => {
     warehousesApi.list().then(setWarehouses).catch(() => {})
   }, [])
 
+  useEffect(() => {
+    loadWarehouses()
+  }, [loadWarehouses])
+
   const openWarehouse = (id: string) => {
     warehousesApi.get(id).then(setSelectedDetail).catch(() => {})
+  }
+
+  const openCreateModal = () => {
+    setWCode('')
+    setWName('')
+    setWCity('Miami, FL')
+    setWAddress('')
+    setWCapacity('5000')
+    setWStatus('operational')
+    setError(null)
+    setModalMode('create')
+  }
+
+  const openEditModal = () => {
+    if (!selectedDetail) return
+    const w = selectedDetail.warehouse
+    setWCode(w.code)
+    setWName(w.name)
+    setWCity(w.city || '')
+    setWAddress(w.address || '')
+    setWCapacity(String(w.capacity_units ?? 5000))
+    setWStatus(w.status)
+    setError(null)
+    setModalMode('edit')
+  }
+
+  const handleSaveWarehouse = async () => {
+    setError(null)
+    setSaving(true)
+    try {
+      if (modalMode === 'create') {
+        await warehousesApi.create({
+          code: wCode,
+          name: wName,
+          city: wCity || undefined,
+          address: wAddress || undefined,
+          capacity_units: Number(wCapacity) || 5000,
+          status: wStatus,
+        })
+        setToastMsg('Nuevo almacén registrado en PostgreSQL.')
+      } else if (modalMode === 'edit' && selectedDetail) {
+        await warehousesApi.update(selectedDetail.warehouse.id, {
+          name: wName,
+          city: wCity || undefined,
+          address: wAddress || undefined,
+          capacity_units: Number(wCapacity) || 5000,
+          status: wStatus,
+        })
+        openWarehouse(selectedDetail.warehouse.id)
+        setToastMsg('Almacén actualizado en PostgreSQL.')
+      }
+      setModalMode(null)
+      loadWarehouses()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al guardar el almacén.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (selectedDetail) {
@@ -900,19 +1026,38 @@ function Warehouses({ salesMode }: { salesMode: boolean }) {
     const totalValue = selectedDetail.stocks.reduce((sum, s) => sum + s.quantity * s.variant.cost, 0)
     return <main className="page warehouse-detail">
       <div className="breadcrumb"><button onClick={() => setSelectedDetail(null)}>Almacenes</button><ChevronRight size={13} /><b>{w.name}</b></div>
-      <div className="detail-hero warehouse-hero"><div className="detail-product"><span className="warehouse-hero-icon"><Warehouse size={25} /></span><div><div className="detail-title-line"><h1>{w.name}</h1><Badge tone={w.status === 'operational' ? 'success' : 'warning'} dot>{w.status === 'operational' ? 'Operativo' : 'Mantenimiento'}</Badge></div><p>{w.code} · {w.city}</p><div className="detail-meta"><span><MapPin size={14} /> {w.address || w.city}</span><span><Users size={14} /> {w.manager?.name || 'Sin asignar'}</span></div></div></div><div className="heading-actions"><Button variant="secondary" disabled={salesMode}>Editar almacén</Button></div></div>
+      <div className="detail-hero warehouse-hero"><div className="detail-product"><span className="warehouse-hero-icon"><Warehouse size={25} /></span><div><div className="detail-title-line"><h1>{w.name}</h1><Badge tone={w.status === 'operational' ? 'success' : 'warning'} dot>{w.status === 'operational' ? 'Operativo' : 'Mantenimiento'}</Badge></div><p>{w.code} · {w.city}</p><div className="detail-meta"><span><MapPin size={14} /> {w.address || w.city}</span><span><Users size={14} /> {w.manager?.name || 'Sin asignar'}</span></div></div></div><div className="heading-actions"><Button variant="secondary" disabled={salesMode} onClick={openEditModal}>Editar almacén</Button></div></div>
       <div className="detail-stats warehouse-stats"><Card><span>Variantes con stock</span><strong>{w.distinct_variants}</strong><small>En esta ubicación</small></Card><Card><span>Unidades totales</span><strong>{w.total_units.toLocaleString()}</strong><small>Disponibles en almacén</small></Card><Card><span>Valor almacenado</span><strong>${totalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}</strong><small className="up">Valor a costo</small></Card><Card><span>Capacidad máxima</span><strong>{(w.capacity_units ?? 5000).toLocaleString()} uds.</strong><div className="capacity-bar"><i /></div></Card></div>
       <Card className="ops-table-card">
         <div className="table-toolbar ops-toolbar"><div><h2>Stock por producto</h2><p>Inventario disponible en {w.name}.</p></div></div>
         <div className="table-scroll"><table className="warehouse-stock-table"><thead><tr><th>Producto</th><th>Categoría</th><th>Disponible</th><th>Reservado</th><th>Valor a costo</th><th>Estado</th></tr></thead><tbody>{selectedDetail.stocks.map((s, idx) => <tr key={s.id}><td><div className="product-cell"><img src={s.variant.image || productImages[idx % productImages.length]} alt="" /><span><b>{s.variant.product_name}</b><small>{s.variant.sku}</small></span></div></td><td>{s.variant.category || '—'}</td><td><b>{s.available} uds.</b></td><td>{s.reserved} uds.</td><td><b>${(s.quantity * s.variant.cost).toLocaleString()}</b></td><td><Badge tone={s.quantity < s.variant.min_stock ? 'warning' : 'success'} dot>{s.quantity < s.variant.min_stock ? 'Stock bajo' : 'Saludable'}</Badge></td></tr>)}</tbody></table></div>
       </Card>
+      {modalMode === 'edit' && <Modal title={`Editar ${w.name}`} subtitle="Actualiza capacidad, ubicación o estado operativo." onClose={() => setModalMode(null)} footer={<><Button variant="secondary" onClick={() => setModalMode(null)}>Cancelar</Button><Button disabled={saving} onClick={handleSaveWarehouse}>{saving ? 'Guardando...' : 'Guardar cambios'}</Button></>}>
+        <div className="modal-form-stack">
+          <div className="modal-form-grid">
+            <Field label="Nombre del almacén *" value={wName} onChange={setWName} />
+            <Field label="Ciudad *" value={wCity} onChange={setWCity} />
+          </div>
+          <div className="modal-form-grid">
+            <Field label="Dirección" value={wAddress} onChange={setWAddress} />
+            <Field label="Capacidad máxima (uds.)" type="number" value={wCapacity} onChange={setWCapacity} />
+          </div>
+          <FormSelect label="Estado operativo" value={wStatus} onChange={(val) => setWStatus(val as 'operational' | 'maintenance' | 'closed')}>
+            <option value="operational">Operativo</option>
+            <option value="maintenance">En mantenimiento</option>
+            <option value="closed">Cerrado</option>
+          </FormSelect>
+          {error && <p className="danger-text">{error}</p>}
+        </div>
+      </Modal>}
+      {toastMsg && <div className="toast"><span><Check size={16} /></span><div><b>Almacenes</b><p>{toastMsg}</p></div><button onClick={() => setToastMsg(null)}><X size={15} /></button></div>}
     </main>
   }
 
   const totalUnitsAll = warehouses.reduce((sum, w) => sum + w.total_units, 0)
 
   return <main className="page operations-page">
-    <div className="page-heading compact"><div><div className="breadcrumb"><span>Inventario</span><ChevronRight size={13} /><b>Almacenes</b></div><h1>Almacenes</h1><p>Administra ubicaciones, capacidad y distribución del inventario.</p></div><Button disabled={salesMode} icon={<Plus size={16} />}>Nuevo almacén</Button></div>
+    <div className="page-heading compact"><div><div className="breadcrumb"><span>Inventario</span><ChevronRight size={13} /><b>Almacenes</b></div><h1>Almacenes</h1><p>Administra ubicaciones, capacidad y distribución del inventario en PostgreSQL.</p></div><Button disabled={salesMode} icon={<Plus size={16} />} onClick={openCreateModal}>Nuevo almacén</Button></div>
     <div className="warehouse-overview"><Card><div><span className="ops-icon info"><Building2 size={19} /></span><div><small>Ubicaciones registradas</small><strong>{warehouses.length}</strong></div></div><div className="warehouse-spark">{[35,48,42,58,64,61,76].map((h,i)=><i key={i} style={{height:`${h}%`}} />)}</div></Card><Card><div><span className="ops-icon success"><Boxes size={19} /></span><div><small>Unidades almacenadas</small><strong>{totalUnitsAll.toLocaleString()}</strong></div></div><Badge tone="success"><ArrowUpRight size={11} /> En vivo</Badge></Card><Card><div><span className="ops-icon warning"><AlertTriangle size={19} /></span><div><small>Estado de red</small><strong>Operativa</strong></div></div><Badge tone="info">Multi-almacén</Badge></Card></div>
     <Card className="ops-table-card">
       <div className="table-scroll"><table className="warehouse-list-table"><thead><tr><th>Almacén</th><th>Responsable</th><th>Variantes</th><th>Unidades</th><th>Capacidad</th><th>Estado</th><th /></tr></thead><tbody>{warehouses.map((w) => {
@@ -920,6 +1065,28 @@ function Warehouses({ salesMode }: { salesMode: boolean }) {
         return <tr key={w.id}><td><button className="warehouse-link" onClick={() => openWarehouse(w.id)}><span><Warehouse size={18} /></span><div><b>{w.name}</b><small><MapPin size={10} /> {w.city} · {w.code}</small></div></button></td><td><div className="person-cell"><span>{initialsFromName(managerName)}</span>{managerName}</div></td><td><b>{w.distinct_variants}</b></td><td>{w.total_units.toLocaleString()} uds.</td><td><b>{(w.capacity_units ?? 0).toLocaleString()} uds.</b></td><td><Badge tone={w.status === 'operational' ? 'success' : 'warning'} dot>{w.status === 'operational' ? 'Operativo' : 'Mantenimiento'}</Badge></td><td><Button variant="ghost" size="icon" icon={<ChevronRight size={16} />} onClick={() => openWarehouse(w.id)} /></td></tr>
       })}</tbody></table></div>
     </Card>
+    {modalMode === 'create' && <Modal title="Nuevo almacén" subtitle="Registra un nuevo centro de distribución o sucursal." onClose={() => setModalMode(null)} footer={<><Button variant="secondary" onClick={() => setModalMode(null)}>Cancelar</Button><Button disabled={saving} onClick={handleSaveWarehouse}>{saving ? 'Creando...' : 'Crear almacén'}</Button></>}>
+      <div className="modal-form-stack">
+        <div className="modal-form-grid">
+          <Field label="Código *" placeholder="Ej. ALM-JAX-05" value={wCode} onChange={setWCode} />
+          <Field label="Nombre del almacén *" placeholder="Ej. Hub Logístico Jacksonville" value={wName} onChange={setWName} />
+        </div>
+        <div className="modal-form-grid">
+          <Field label="Ciudad" placeholder="Ej. Jacksonville, FL" value={wCity} onChange={setWCity} />
+          <Field label="Dirección" placeholder="Ej. 900 Bay St" value={wAddress} onChange={setWAddress} />
+        </div>
+        <div className="modal-form-grid">
+          <Field label="Capacidad máxima (uds.)" type="number" value={wCapacity} onChange={setWCapacity} />
+          <FormSelect label="Estado operativo" value={wStatus} onChange={(val) => setWStatus(val as 'operational' | 'maintenance' | 'closed')}>
+            <option value="operational">Operativo</option>
+            <option value="maintenance">En mantenimiento</option>
+            <option value="closed">Cerrado</option>
+          </FormSelect>
+        </div>
+        {error && <p className="danger-text">{error}</p>}
+      </div>
+    </Modal>}
+    {toastMsg && <div className="toast"><span><Check size={16} /></span><div><b>Almacenes</b><p>{toastMsg}</p></div><button onClick={() => setToastMsg(null)}><X size={15} /></button></div>}
   </main>
 }
 
@@ -1567,7 +1734,7 @@ export default function App() {
 
   if (page === 'login') return <Login onComplete={handleLoginComplete} />
 
-  return <AppShell page={page} setPage={setPage} dark={dark} setDark={setDark} salesMode={salesMode} setSalesMode={setSalesMode} user={user} productsCount={productsCount}>
+  return <AppShell page={page} setPage={setPage} dark={dark} setDark={setDark} salesMode={salesMode} setSalesMode={setSalesMode} user={user} productsCount={productsCount} onSelectProduct={setSelectedProductId}>
     {page === 'dashboard' && <Dashboard setPage={setPage} salesMode={salesMode} user={user} onSelectProduct={setSelectedProductId} />}
     {page === 'products' && <Products salesMode={salesMode} setPage={setPage} onSelectProduct={setSelectedProductId} />}
     {page === 'product-form' && <ProductForm setPage={setPage} onProductCreated={(created) => { setSelectedProductId(created.id); setProductsCount((c) => c + 1); setPage('product-detail') }} />}

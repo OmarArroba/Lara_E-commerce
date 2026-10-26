@@ -9,13 +9,14 @@ Panel administrativo y API RESTful de gestión de inventario multi-almacén para
 1. [Características Principales](#-características-principales)
 2. [Stack Tecnológico](#-stack-tecnológico)
 3. [Arquitectura y Estructura del Proyecto](#-arquitectura-y-estructura-del-proyecto)
-4. [Modelo de Datos y Reglas de Negocio](#-modelo-de-datos-y-reglas-de-negocio)
-5. [Seguridad y Control de Acceso (RBAC)](#-seguridad-y-control-de-acceso-rbac)
-6. [Requisitos Previos](#-requisitos-previos)
-7. [Instalación y Puesta en Marcha](#-instalación-y-puesta-en-marcha)
-8. [Usuarios de Demostración](#-usuarios-de-demostración)
-9. [Pruebas y Calidad de Código](#-pruebas-y-calidad-de-código)
-10. [Convenciones de Trabajo](#-convenciones-de-trabajo)
+4. [Endpoints de la API (`/api/v1`)](#-endpoints-de-la-api-apiv1)
+5. [Modelo de Datos y Reglas de Negocio](#-modelo-de-datos-y-reglas-de-negocio)
+6. [Seguridad y Control de Acceso (RBAC)](#-seguridad-y-control-de-acceso-rbac)
+7. [Requisitos Previos](#-requisitos-previos)
+8. [Instalación y Puesta en Marcha](#-instalación-y-puesta-en-marcha)
+9. [Usuarios de Demostración](#-usuarios-de-demostración)
+10. [Pruebas y Calidad de Código](#-pruebas-y-calidad-de-código)
+11. [Convenciones de Trabajo](#-convenciones-de-trabajo)
 
 ---
 
@@ -63,10 +64,35 @@ Lara_E-commerce/
 │   ├── tests/Feature/        # Suite de pruebas de integración con Pest
 │   └── compose.yaml          # Servicios Docker (laravel.test, pgsql, redis, mailpit)
 ├── frontend/                 # Aplicación SPA en React 19 + Vite + Tailwind CSS v4
-│   ├── src/                  # Componentes, vistas y estilos del panel administrativo
-│   └── vite.config.ts        # Proxy de desarrollo hacia http://localhost:8000
+│   ├── src/                  # Componentes, cliente API tipado y vistas conectadas a PostgreSQL
+│   └── vite.config.ts        # Proxy de desarrollo hacia http://127.0.0.1:8000
 └── README.md                 # Documentación general del proyecto
 ```
+
+---
+
+## Endpoints de la API (`/api/v1`)
+
+| Módulo | Método y Ruta | Descripción | Permiso Requerido |
+|---|---|---|---|
+| **Auth** | `POST /api/v1/auth/login` | Inicio de sesión SPA con cookie `HttpOnly` + CSRF (`throttle:login`) | Público |
+| **Auth** | `GET /api/v1/auth/me` | Perfil activo con roles y permisos efectivos | Autenticado |
+| **Auth** | `POST /api/v1/auth/logout` | Cierre e invalidación de sesión | Autenticado |
+| **Dashboard** | `GET /api/v1/dashboard` | KPIs en vivo, alertas de stock bajo y últimos movimientos | Autenticado |
+| **Búsqueda** | `GET /api/v1/search?q=...` | Búsqueda global (`⌘K`) de productos, SKUs, almacenes y órdenes | Autenticado |
+| **Productos** | `GET / POST /api/v1/products` | Listado filtrable y creación transaccional con variantes y stock inicial | `products.view` / `products.create` |
+| **Productos** | `GET /api/v1/products/{id}` | Detalle de producto, variantes por almacén y kardex del producto | `products.view` |
+| **Catálogo** | `GET / POST /api/v1/categories` | Árbol jerárquico de categorías | `categories.view` / `categories.create` |
+| **Catálogo** | `GET / POST /api/v1/brands` | Fabricantes y marcas registradas | `brands.view` / `brands.create` |
+| **Proveedores** | `GET / POST /api/v1/suppliers` | Proveedores con datos fiscales/contacto cifrados (`encrypted`) | `suppliers.view` / `suppliers.create` |
+| **Almacenes** | `GET / POST / PATCH /api/v1/warehouses` | Gestión multi-almacén y existencias por ubicación | `warehouses.view` / `create` / `update` |
+| **Inventario** | `GET / POST /api/v1/stock-movements` | Entradas, salidas, ajustes, devoluciones y transferencias atómicas | `stock.view` / `stock.move` / `stock.adjust` |
+| **Compras** | `GET / POST /api/v1/purchase-orders` | Emisión y seguimiento de órdenes de compra a proveedores | `purchase-orders.view` / `create` |
+| **Compras** | `POST /api/v1/purchase-orders/{id}/receive` | Recepción parcial o total con ingreso automático de stock | `purchase-orders.receive` |
+| **Reportes** | `GET /api/v1/reports` | Valorización financiera a costo y venta por almacén y categoría | `reports.view` |
+| **Reportes** | `GET /api/v1/reports/export` | Exportación CSV/Excel (UTF-8 BOM) del inventario valorizado | `reports.export` |
+| **Usuarios** | `GET / POST / PATCH /api/v1/users` | Gestión de usuarios, activación y asignación de roles Spatie | `users.view` / `users.manage` |
+| **Auditoría** | `GET /api/v1/audit-logs` | Bitácora en tiempo real desde `activity_log` | `audit.view` |
 
 ---
 

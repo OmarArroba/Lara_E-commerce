@@ -278,3 +278,25 @@ export interface ApiReportData {
     retail_value: number
   }>
 }
+
+export interface ApiGlobalSearchResults {
+  products: Array<{
+    id: string
+    name: string
+    sku: string
+    category: string | null
+  }>
+  warehouses: Array<{
+    id: string
+    code: string
+    name: string
+    city: string | null
+  }>
+  purchase_orders: Array<{
+    id: string
+    number: string
+    supplier: string | null
+    status: string
+    total: number
+  }>
+}
